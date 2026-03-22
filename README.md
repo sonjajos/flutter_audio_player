@@ -2,15 +2,7 @@
 
 A full-featured music player for iOS built with Flutter and native Swift — featuring real-time FFT audio visualization, lock screen controls, and a clean dark UI.
 
-<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-22 at 18 01 45" src="https://github.com/user-attachments/assets/e9acd52d-935f-42a6-accf-2d074645b0cd" />
-
-<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-22 at 18 00 56" src="https://github.com/user-attachments/assets/bb8b571b-63f8-4116-bf4c-fa3d58acb298" />
-
-<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-22 at 18 01 07" src="https://github.com/user-attachments/assets/503ea4b4-a3e9-480c-b03f-7b588ba3660d" />
-
-<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-22 at 18 01 20" src="https://github.com/user-attachments/assets/7895e212-03ab-4d2f-a951-3aecb34ddd0a" />
-
-<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-22 at 18 00 29" src="https://github.com/user-attachments/assets/bf28e5e9-f512-4636-8098-2b0ebefe039d" />
+<img width="618" height="265" alt="Screenshot 2026-03-22 at 18 38 16" src="https://github.com/user-attachments/assets/f61053dc-6d56-4560-9c78-7f707840f1b4" />
 
 ---
 
