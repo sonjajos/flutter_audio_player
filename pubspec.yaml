@@ -1,0 +1,36 @@
+name: flutter_audio_player
+description: Audio player with pillar visualizer
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Routing
+  go_router: ^14.8.1
+
+  # Audio playback — native AVAudioEngine via platform channels
+  # (just_audio and audio_service removed — replaced by native Swift implementation)
+
+  # SQLite local storage
+  sqflite: ^2.4.2
+  path: ^1.9.1
+
+  # File picking for upload
+  file_picker: ^8.3.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
