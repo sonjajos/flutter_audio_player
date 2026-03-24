@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../widgets/playback_controls.dart';
-import '../widgets/pillar_visualizer.dart';
+import '../widgets/circular_visualizer.dart';
 import '../services/audio_player_service.dart';
 
 class AudioPlayerScreen extends ConsumerStatefulWidget {
@@ -51,7 +51,9 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
 
     // Listen to native playback state
     _stateSub = service.stateStream.listen((event) {
-      ref.read(audioTrackNotifierProvider.notifier).updateFromNativeState(event);
+      ref
+          .read(audioTrackNotifierProvider.notifier)
+          .updateFromNativeState(event);
     });
 
     // Listen to remote commands (lock screen + track completion)
