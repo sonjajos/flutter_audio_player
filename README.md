@@ -18,13 +18,13 @@ A full-featured music player for iOS built with Flutter and native Swift — fea
 
 ## Requirements
 
-| Tool | Version |
-|------|---------|
-| Flutter SDK | 3.11.3+ |
-| Dart SDK | 3.x |
-| Xcode | 14+ |
-| iOS deployment target | 12.0+ |
-| CocoaPods | Latest |
+| Tool                  | Version |
+| --------------------- | ------- |
+| Flutter SDK           | 3.11.3+ |
+| Dart SDK              | 3.x     |
+| Xcode                 | 14+     |
+| iOS deployment target | 12.0+   |
+| CocoaPods             | Latest  |
 
 > Android is not currently supported — the native audio engine is iOS-only.
 
@@ -93,7 +93,7 @@ flutter_audio_player/
 │   └── widgets/
 │       ├── audio_list_tile.dart         # Swipeable list item
 │       ├── mini_player_bar.dart         # Compact player bar
-│       ├── pillar_visualizer.dart       # FFT visualizer widget
+│       ├── circular_visualizer.dart       # FFT visualizer widget
 │       └── playback_controls.dart       # Play/pause/skip controls
 │
 ├── ios/
@@ -114,16 +114,16 @@ flutter_audio_player/
 
 The app uses **Flutter Riverpod** (v2.6.1) with a layered provider structure:
 
-| Provider | Type | Purpose |
-|----------|------|---------|
-| `sqliteServiceProvider` | Provider | SQLite database singleton |
-| `audioPlayerServiceProvider` | Provider | Platform channel bridge singleton |
-| `bandCountProvider` | StateProvider | Currently selected FFT band count |
-| `playerStateStreamProvider` | StreamProvider | Playback state from native (position, duration, playing) |
-| `fftStreamProvider` | StreamProvider | Real-time FFT band data from native |
-| `commandStreamProvider` | StreamProvider | Remote commands (lock screen, completion) |
-| `audioTrackNotifierProvider` | StateNotifierProvider | Queue, current track, play/pause logic |
-| `audioMetadataNotifierProvider` | StateNotifierProvider | Library list, file upload/delete |
+| Provider                        | Type                  | Purpose                                                  |
+| ------------------------------- | --------------------- | -------------------------------------------------------- |
+| `sqliteServiceProvider`         | Provider              | SQLite database singleton                                |
+| `audioPlayerServiceProvider`    | Provider              | Platform channel bridge singleton                        |
+| `bandCountProvider`             | StateProvider         | Currently selected FFT band count                        |
+| `playerStateStreamProvider`     | StreamProvider        | Playback state from native (position, duration, playing) |
+| `fftStreamProvider`             | StreamProvider        | Real-time FFT band data from native                      |
+| `commandStreamProvider`         | StreamProvider        | Remote commands (lock screen, completion)                |
+| `audioTrackNotifierProvider`    | StateNotifierProvider | Queue, current track, play/pause logic                   |
+| `audioMetadataNotifierProvider` | StateNotifierProvider | Library list, file upload/delete                         |
 
 ### Data Flow
 
@@ -150,12 +150,12 @@ The app does **not** use third-party audio packages. All audio processing is imp
 
 Registers and routes all Flutter platform channels:
 
-| Channel | Type | Direction | Purpose |
-|---------|------|-----------|---------|
-| `audio_player/control` | MethodChannel | Flutter → Native | Playback commands & file operations |
-| `audio_player/state` | EventChannel | Native → Flutter | Playback state updates |
-| `audio_player/fft` | EventChannel | Native → Flutter | Real-time FFT band data |
-| `audio_player/commands` | EventChannel | Native → Flutter | Lock screen remote commands |
+| Channel                 | Type          | Direction        | Purpose                             |
+| ----------------------- | ------------- | ---------------- | ----------------------------------- |
+| `audio_player/control`  | MethodChannel | Flutter → Native | Playback commands & file operations |
+| `audio_player/state`    | EventChannel  | Native → Flutter | Playback state updates              |
+| `audio_player/fft`      | EventChannel  | Native → Flutter | Real-time FFT band data             |
+| `audio_player/commands` | EventChannel  | Native → Flutter | Lock screen remote commands         |
 
 **MethodChannel API (`audio_player/control`):**
 
@@ -249,10 +249,10 @@ A `CustomPainter`-based widget that renders animated frequency pillars:
 
 ## Data Persistence
 
-| Storage | Usage |
-|---------|-------|
-| **SQLite** (`sqflite`) | Track metadata (title, artist, file path, duration). `UNIQUE` constraint on `filePath` prevents duplicates. |
-| **App Documents** (`audio_files/`) | Imported audio files copied into the app's sandboxed Documents directory via iOS `FileManager`. |
+| Storage                            | Usage                                                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **SQLite** (`sqflite`)             | Track metadata (title, artist, file path, duration). `UNIQUE` constraint on `filePath` prevents duplicates. |
+| **App Documents** (`audio_files/`) | Imported audio files copied into the app's sandboxed Documents directory via iOS `FileManager`.             |
 
 When the app starts, `AudioMetadataNotifier` scans the Documents directory and reconciles the disk state with the database — removing stale entries and importing any untracked files.
 
@@ -260,11 +260,11 @@ When the app starts, `AudioMetadataNotifier` scans the Documents directory and r
 
 ## Dependencies
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `flutter_riverpod` | ^2.6.1 | State management |
-| `go_router` | ^14.8.1 | Declarative navigation |
-| `sqflite` | ^2.4.2 | SQLite local database |
-| `file_picker` | ^8.3.7 | System file picker for audio import |
-| `path` | ^1.9.1 | Cross-platform path utilities |
-| `cupertino_icons` | ^1.0.8 | iOS-style icons |
+| Package            | Version | Purpose                             |
+| ------------------ | ------- | ----------------------------------- |
+| `flutter_riverpod` | ^2.6.1  | State management                    |
+| `go_router`        | ^14.8.1 | Declarative navigation              |
+| `sqflite`          | ^2.4.2  | SQLite local database               |
+| `file_picker`      | ^8.3.7  | System file picker for audio import |
+| `path`             | ^1.9.1  | Cross-platform path utilities       |
+| `cupertino_icons`  | ^1.0.8  | iOS-style icons                     |
