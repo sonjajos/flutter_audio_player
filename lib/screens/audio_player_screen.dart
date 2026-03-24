@@ -13,7 +13,8 @@ class AudioPlayerScreen extends ConsumerStatefulWidget {
   ConsumerState<AudioPlayerScreen> createState() => _AudioPlayerScreenState();
 }
 
-class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> {
+class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
+    with WidgetsBindingObserver {
   final _visualizerKey = GlobalKey<PillarVisualizerState>();
   StreamSubscription<FFTEvent>? _fftSub;
   StreamSubscription<PlayerStateEvent>? _stateSub;
@@ -22,7 +23,30 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _subscribeStreams();
+  }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cancelStreams();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      // App is going to background — cancel ALL streams.
+      // Native side stops everything too, so nothing to consume.
+      _cancelStreams();
+    } else if (state == AppLifecycleState.resumed) {
+      // App is back — resubscribe to all streams.
+      _subscribeStreams();
+    }
+  }
+
+  void _subscribeStreams() {
     final service = ref.read(audioPlayerServiceProvider);
 
     // Listen to native playback state
@@ -53,12 +77,10 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> {
     });
   }
 
-  @override
-  void dispose() {
+  void _cancelStreams() {
     _fftSub?.cancel();
     _stateSub?.cancel();
     _commandSub?.cancel();
-    super.dispose();
   }
 
   void _cycleBandCount() {

@@ -17,7 +17,7 @@ class PillarVisualizer extends StatefulWidget {
 }
 
 class PillarVisualizerState extends State<PillarVisualizer>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   late Float32List _currentBands;
   late Float32List _targetBands;
@@ -25,6 +25,7 @@ class PillarVisualizerState extends State<PillarVisualizer>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentBands = Float32List(widget.bandCount);
     _targetBands = Float32List(widget.bandCount);
     _controller = AnimationController(
@@ -45,7 +46,17 @@ class PillarVisualizerState extends State<PillarVisualizer>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _controller.stop();
+    } else if (state == AppLifecycleState.resumed) {
+      _controller.repeat();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.removeListener(_onTick);
     _controller.dispose();
     super.dispose();

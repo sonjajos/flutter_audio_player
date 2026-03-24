@@ -16,9 +16,15 @@ public class AudioEnginePlugin: NSObject, FlutterPlugin {
     private var currentTitle: String = ""
     private var currentArtist: String = ""
 
+    // Retain the plugin instance for the lifetime of the engine.
+    // Without this, the local variable in register() is deallocated
+    // and EventChannel/MethodChannel callbacks fire on a dead object.
+    private static var instance: AudioEnginePlugin?
+
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let instance = AudioEnginePlugin()
-        instance.setupChannels(registrar: registrar)
+        let plugin = AudioEnginePlugin()
+        plugin.setupChannels(registrar: registrar)
+        instance = plugin
     }
 
     private func setupChannels(registrar: FlutterPluginRegistrar) {

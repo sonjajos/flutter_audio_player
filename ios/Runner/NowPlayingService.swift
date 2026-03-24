@@ -64,4 +64,13 @@ class NowPlayingService {
     func clearNowPlaying() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
+
+    deinit {
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.removeTarget(nil)
+        center.pauseCommand.removeTarget(nil)
+        center.nextTrackCommand.removeTarget(nil)
+        center.previousTrackCommand.removeTarget(nil)
+        center.changePlaybackPositionCommand.removeTarget(nil)
+    }
 }

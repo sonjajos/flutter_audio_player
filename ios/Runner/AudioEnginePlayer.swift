@@ -1,5 +1,6 @@
 import AVFoundation
 import Accelerate
+import UIKit
 
 enum PlaybackState: String {
     case idle
@@ -48,6 +49,19 @@ class AudioEnginePlayer {
     private var fftImagp: [Float] = []
     private var magnitudes: [Float] = []
 
+    // Pre-allocated sample buffers (reused to avoid per-frame heap allocations)
+    private var monoBuffer: [Float] = []
+    private var windowedBuffer: [Float] = []
+
+    // Backpressure: skip FFT if the previous frame is still processing.
+    // Prevents unbounded task accumulation on fftQueue.
+    private var fftProcessing = false
+    private let fftLock: UnsafeMutablePointer<os_unfair_lock> = {
+        let ptr = UnsafeMutablePointer<os_unfair_lock>.allocate(capacity: 1)
+        ptr.initialize(to: os_unfair_lock())
+        return ptr
+    }()
+
     // (no adaptive state needed — normalization is per-frame relative to peak)
 
     // MARK: - Callbacks
@@ -56,19 +70,118 @@ class AudioEnginePlayer {
     var onFFTData: FFTCallback?
     var onTrackCompleted: CompletionCallback?
 
+    // MARK: - Background / Foreground
+
+    /// Whether the FFT tap is currently suspended due to backgrounding.
+    private var isTapSuspended = false
+
     // MARK: - Init
 
     init() {
         setupFFT()
         setupEngine()
+        observeAppLifecycle()
     }
 
     deinit {
+        NotificationCenter.default.removeObserver(self)
         positionTimer?.invalidate()
         removeTap()
         engine.stop()
         if let setup = fftSetup {
             vDSP_destroy_fftsetup(setup)
+        }
+        fftLock.deinitialize(count: 1)
+        fftLock.deallocate()
+    }
+
+    // MARK: - App Lifecycle
+
+    private func observeAppLifecycle() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleEngineConfigChange),
+            name: NSNotification.Name.AVAudioEngineConfigurationChange,
+            object: engine
+        )
+    }
+
+    @objc private func appDidEnterBackground() {
+        // Capture position while engine is still valid.
+        if playbackState == .playing {
+            seekFrameOffset = currentFramePosition()
+        }
+
+        let wasPlaying = playbackState == .playing
+
+        // Full teardown — cleanest way to avoid memory issues and
+        // deadlocks across background/foreground transitions.
+        playerNode.stop()
+        stopPositionTimer()
+        removeTap()
+
+        // Reset FFT backpressure flag so it doesn't stay stuck.
+        os_unfair_lock_lock(fftLock)
+        fftProcessing = false
+        os_unfair_lock_unlock(fftLock)
+
+        if engine.isRunning {
+            engine.stop()
+        }
+
+        isTapSuspended = true
+
+        if wasPlaying {
+            playbackState = .paused
+        }
+        notifyState()
+    }
+
+    @objc private func appWillEnterForeground() {
+        guard isTapSuspended else { return }
+        isTapSuspended = false
+
+        // Engine was fully stopped on background. Don't restart
+        // automatically — let the user tap play/resume.
+        // Just refresh flutter UI with the current (paused) state.
+        notifyState()
+    }
+
+    @objc private func handleEngineConfigChange() {
+        // If we're backgrounded, ignore — engine is intentionally stopped.
+        guard !isTapSuspended else { return }
+
+        // Defer off the notification callback to avoid re-entrancy deadlocks.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, !self.isTapSuspended else { return }
+            guard let file = self.audioFile else { return }
+            let fmt = file.processingFormat
+
+            self.engine.disconnectNodeOutput(self.playerNode)
+            self.connectNodes(format: fmt)
+            self.installTap(format: fmt)
+
+            if !self.engine.isRunning {
+                self.engine.prepare()
+                try? self.engine.start()
+
+                if self.playbackState == .playing {
+                    self.scheduleFile(from: self.seekFrameOffset)
+                    self.playerNode.play()
+                }
+            }
         }
     }
 
@@ -97,6 +210,8 @@ class AudioEnginePlayer {
         fftRealp = [Float](repeating: 0, count: halfN)
         fftImagp = [Float](repeating: 0, count: halfN)
         magnitudes = [Float](repeating: 0, count: halfN)
+        monoBuffer = [Float](repeating: 0, count: fftSize)
+        windowedBuffer = [Float](repeating: 0, count: fftSize)
     }
 
     // MARK: - Public API
@@ -113,8 +228,6 @@ class AudioEnginePlayer {
         if engine.isRunning {
             engine.stop()
         }
-        engine.reset()
-        engine.attach(playerNode)
 
         let url = URL(fileURLWithPath: filePath)
         audioFile = try AVAudioFile(forReading: url)
@@ -130,8 +243,10 @@ class AudioEnginePlayer {
         // Connect nodes with the file's format
         connectNodes(format: file.processingFormat)
 
-        // Install tap for FFT / PCM data
-        installTap(format: file.processingFormat)
+        // Install tap for FFT / PCM data (skip if backgrounded)
+        if !isTapSuspended {
+            installTap(format: file.processingFormat)
+        }
 
         // Prepare and start engine
         engine.prepare()
@@ -164,6 +279,22 @@ class AudioEnginePlayer {
     }
 
     func resume() {
+        guard let file = audioFile else { return }
+
+        // If engine was stopped (e.g. after backgrounding), do a cold restart.
+        if !engine.isRunning {
+            let fmt = file.processingFormat
+            engine.disconnectNodeOutput(playerNode)
+            connectNodes(format: fmt)
+            if !isTapSuspended {
+                installTap(format: fmt)
+            }
+            engine.prepare()
+            try? engine.start()
+            // Engine restart invalidates all scheduled segments.
+            scheduleFile(from: seekFrameOffset)
+        }
+
         playerNode.play()
         playbackState = .playing
 
@@ -217,7 +348,8 @@ class AudioEnginePlayer {
         }
 
         guard let nodeTime = playerNode.lastRenderTime,
-              let playerTime = playerNode.playerTime(forNodeTime: nodeTime) else {
+            let playerTime = playerNode.playerTime(forNodeTime: nodeTime)
+        else {
             return seekFrameOffset
         }
 
@@ -227,7 +359,8 @@ class AudioEnginePlayer {
 
     private func startPositionTimer() {
         positionTimer?.invalidate()
-        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) {
+            [weak self] _ in
             self?.notifyState()
         }
     }
@@ -256,8 +389,9 @@ class AudioEnginePlayer {
         ) { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self = self,
-                      self.loadGeneration == generation,
-                      self.playbackState == .playing else { return }
+                    self.loadGeneration == generation,
+                    self.playbackState == .playing
+                else { return }
                 self.playbackState = .stopped
                 self.seekFrameOffset = 0
                 self.stopPositionTimer()
@@ -278,30 +412,49 @@ class AudioEnginePlayer {
             bufferSize: AVAudioFrameCount(fftSize),
             format: nil
         ) { [weak self] buffer, _ in
-            guard let self = self else { return }
+            guard let self = self, !self.isTapSuspended else { return }
 
             let frameLength = Int(buffer.frameLength)
             guard frameLength > 0,
-                  let channelData = buffer.floatChannelData else { return }
+                let channelData = buffer.floatChannelData
+            else { return }
 
             let count = min(frameLength, self.fftSize)
             let channelCount = Int(buffer.format.channelCount)
 
-            // Mix all channels to mono
-            var monoSamples = [Float](repeating: 0, count: count)
+            // Mix all channels to mono using pre-allocated buffer
+            vDSP_vclr(&self.monoBuffer, 1, vDSP_Length(self.fftSize))
             for ch in 0..<channelCount {
                 let chPtr = channelData[ch]
                 for i in 0..<count {
-                    monoSamples[i] += chPtr[i]
+                    self.monoBuffer[i] += chPtr[i]
                 }
             }
             if channelCount > 1 {
                 var divisor = Float(channelCount)
-                vDSP_vsdiv(monoSamples, 1, &divisor, &monoSamples, 1, vDSP_Length(count))
+                vDSP_vsdiv(self.monoBuffer, 1, &divisor, &self.monoBuffer, 1, vDSP_Length(count))
             }
 
-            self.fftQueue.async {
-                self.processFFT(samples: monoSamples)
+            // Backpressure: drop this frame if the previous one is still processing.
+            os_unfair_lock_lock(self.fftLock)
+            let busy = self.fftProcessing
+            if !busy { self.fftProcessing = true }
+            os_unfair_lock_unlock(self.fftLock)
+            guard !busy else { return }
+
+            // Snapshot mono samples into windowedBuffer while still on the
+            // render thread. processFFT() works exclusively from windowedBuffer,
+            // so the next tap invocation can safely overwrite monoBuffer.
+            for i in 0..<self.fftSize {
+                self.windowedBuffer[i] = self.monoBuffer[i]
+            }
+
+            self.fftQueue.async { [weak self] in
+                guard let self = self else { return }
+                self.processFFT()
+                os_unfair_lock_lock(self.fftLock)
+                self.fftProcessing = false
+                os_unfair_lock_unlock(self.fftLock)
             }
         }
     }
@@ -310,24 +463,18 @@ class AudioEnginePlayer {
         engine.mainMixerNode.removeTap(onBus: 0)
     }
 
-    private func processFFT(samples: [Float]) {
+    private func processFFT() {
         let startTime = CACurrentMediaTime()
         let halfN = fftSize / 2
 
-        // Copy samples into windowed buffer (zero-pad if needed)
-        var windowed = [Float](repeating: 0, count: fftSize)
-        let sampleCount = min(samples.count, fftSize)
-        for i in 0..<sampleCount {
-            windowed[i] = samples[i]
-        }
-
-        // Apply Hann window
-        vDSP_vmul(windowed, 1, window, 1, &windowed, 1, vDSP_Length(fftSize))
+        // windowedBuffer already contains the sample snapshot copied by the
+        // tap closure on the render thread. Apply Hann window in-place.
+        vDSP_vmul(windowedBuffer, 1, window, 1, &windowedBuffer, 1, vDSP_Length(fftSize))
 
         // Convert real signal to split complex form for vDSP_fft_zrip
         // vDSP_ctoz treats the input as interleaved complex pairs:
         // [r0, r1, r2, r3, ...] → realp = [r0, r2, ...], imagp = [r1, r3, ...]
-        windowed.withUnsafeBufferPointer { ptr in
+        windowedBuffer.withUnsafeBufferPointer { ptr in
             ptr.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: halfN) { complexPtr in
                 var split = DSPSplitComplex(realp: &self.fftRealp, imagp: &self.fftImagp)
                 vDSP_ctoz(complexPtr, 2, &split, 1, vDSP_Length(halfN))
@@ -343,11 +490,12 @@ class AudioEnginePlayer {
         vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(halfN))
 
         // Convert to dB (10 * log10)
-        var one: Float = 1.0e-10 // small floor to avoid log(0)
+        var one: Float = 1.0e-10  // small floor to avoid log(0)
         vDSP_vdbcon(magnitudes, 1, &one, &magnitudes, 1, vDSP_Length(halfN), 0)
 
         // Logarithmic band grouping
-        let bands = logarithmicBandGrouping(magnitudes: magnitudes, bandCount: bandCount, binCount: halfN)
+        let bands = logarithmicBandGrouping(
+            magnitudes: magnitudes, bandCount: bandCount, binCount: halfN)
 
         let endTime = CACurrentMediaTime()
         let fftTimeUs = Int64((endTime - startTime) * 1_000_000)
@@ -360,7 +508,9 @@ class AudioEnginePlayer {
     /// Groups FFT magnitude bins into bands using logarithmic spacing.
     /// Low frequencies get fewer bins per band, high frequencies get more.
     /// This matches human auditory perception.
-    private func logarithmicBandGrouping(magnitudes: [Float], bandCount: Int, binCount: Int) -> [Float] {
+    private func logarithmicBandGrouping(magnitudes: [Float], bandCount: Int, binCount: Int)
+        -> [Float]
+    {
         var bandDbValues = [Float](repeating: -Float.infinity, count: bandCount)
 
         // Map bands to frequency bins logarithmically
