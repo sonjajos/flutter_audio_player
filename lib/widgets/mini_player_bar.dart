@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/providers.dart';
 import '../services/audio_player_service.dart';
-import 'pillar_visualizer.dart';
+import 'circular_visualizer.dart';
 
 class MiniPlayerBar extends ConsumerStatefulWidget {
   const MiniPlayerBar({super.key});
@@ -48,9 +48,7 @@ class _MiniPlayerBarState extends ConsumerState<MiniPlayerBar> {
         height: 80,
         decoration: const BoxDecoration(
           color: Color(0xFF1E1E1E),
-          border: Border(
-            bottom: BorderSide(color: Colors.white12, width: 0.5),
-          ),
+          border: Border(bottom: BorderSide(color: Colors.white12, width: 0.5)),
         ),
         child: Row(
           children: [
