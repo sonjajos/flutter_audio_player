@@ -230,6 +230,25 @@ public class AudioEnginePlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "DELETE_ERROR", message: error.localizedDescription, details: nil))
             }
 
+        case "decodePCM":
+            guard let filePath = args?["filePath"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "filePath required", details: nil))
+                return
+            }
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let mono = try self.player.decodePCMMono(filePath: filePath)
+                    let data = mono.withUnsafeBytes { Data($0) }
+                    DispatchQueue.main.async {
+                        result(FlutterStandardTypedData(float32: data))
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        result(FlutterError(code: "DECODE_ERROR", message: error.localizedDescription, details: nil))
+                    }
+                }
+            }
+
         default:
             result(FlutterMethodNotImplemented)
         }

@@ -581,4 +581,65 @@ class AudioEnginePlayer {
         let posMs = currentPositionMs()
         onStateChanged?(playbackState.rawValue, posMs, fileDurationMs)
     }
+
+    // MARK: - PCM Decode (for FFI waveform generation)
+
+    /// Decode the audio file to float32 mono PCM. Returns the raw samples so
+    /// Dart can pass them directly to generate_waveform_peaks() via dart:ffi.
+    /// The C++ call itself is NOT made here — that happens on the Dart side.
+    func decodePCMMono(filePath: String) throws -> [Float] {
+        let url: URL
+        if filePath.hasPrefix("file://") {
+            guard let parsed = URL(string: filePath) else {
+                throw NSError(domain: "AudioEnginePlayer", code: 10,
+                              userInfo: [NSLocalizedDescriptionKey: "Invalid file URI: \(filePath)"])
+            }
+            url = parsed
+        } else {
+            url = URL(fileURLWithPath: filePath)
+        }
+
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        let totalFrames = AVAudioFrameCount(file.length)
+
+        guard totalFrames > 0 else {
+            throw NSError(domain: "AudioEnginePlayer", code: 11,
+                          userInfo: [NSLocalizedDescriptionKey: "Audio file has no frames"])
+        }
+
+        // Guard against absurdly large files (> 30 min at 48kHz = ~86M frames)
+        let maxFrames: AVAudioFrameCount = 86_400_000
+        guard totalFrames <= maxFrames else {
+            throw NSError(domain: "AudioEnginePlayer", code: 14,
+                          userInfo: [NSLocalizedDescriptionKey: "Audio file too large for waveform decode"])
+        }
+
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: totalFrames) else {
+            throw NSError(domain: "AudioEnginePlayer", code: 12,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to allocate PCM buffer"])
+        }
+        try file.read(into: pcmBuffer)
+
+        let frameCount = Int(pcmBuffer.frameLength)
+        let channelCount = Int(format.channelCount)
+
+        guard let channelData = pcmBuffer.floatChannelData else {
+            throw NSError(domain: "AudioEnginePlayer", code: 13,
+                          userInfo: [NSLocalizedDescriptionKey: "No float channel data in buffer"])
+        }
+
+        var mono = [Float](repeating: 0, count: frameCount)
+        if channelCount == 1 {
+            mono = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+        } else {
+            for ch in 0..<channelCount {
+                vDSP_vadd(mono, 1, channelData[ch], 1, &mono, 1, vDSP_Length(frameCount))
+            }
+            var divisor = Float(channelCount)
+            vDSP_vsdiv(mono, 1, &divisor, &mono, 1, vDSP_Length(frameCount))
+        }
+
+        return mono
+    }
 }

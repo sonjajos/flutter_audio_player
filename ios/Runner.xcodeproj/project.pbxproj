@@ -21,6 +21,7 @@
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		CCA80C2F261166B37EA95C9E /* NowPlayingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E228DD27CA1A0C2B7085DCCF /* NowPlayingService.swift */; };
+		AB6E48F09337438B91C743D0 /* WaveformCppBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 855EB0C82DFD4BAA91548E9D /* WaveformCppBridge.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +76,10 @@
 		E228DD27CA1A0C2B7085DCCF /* NowPlayingService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NowPlayingService.swift; sourceTree = "<group>"; };
 		F32EFC0F740200B8560EA275 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		FDACCF2989556A62D2DE419D /* AudioEnginePlayer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioEnginePlayer.swift; sourceTree = "<group>"; };
+		FBD4CEA5DE1A4C2FBA2CF9ED /* waveform_peaks.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = waveform_peaks.h; sourceTree = "<group>"; };
+		83FBA9B8C4AA4A239BE5E405 /* waveform_peaks.cpp */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.cpp.cpp; path = waveform_peaks.cpp; sourceTree = "<group>"; };
+		0DDFE90A56384505A2770061 /* WaveformCppBridge.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = WaveformCppBridge.h; sourceTree = "<group>"; };
+		855EB0C82DFD4BAA91548E9D /* WaveformCppBridge.mm */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.cpp.objcpp; path = WaveformCppBridge.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -175,6 +180,10 @@
 				7AFDAE2EA8A64D28A32CE96D /* AudioEnginePlugin.swift */,
 				21B67CAB5B11CDE5B8B04701 /* AudioSessionManager.swift */,
 				E228DD27CA1A0C2B7085DCCF /* NowPlayingService.swift */,
+				FBD4CEA5DE1A4C2FBA2CF9ED /* waveform_peaks.h */,
+				83FBA9B8C4AA4A239BE5E405 /* waveform_peaks.cpp */,
+				0DDFE90A56384505A2770061 /* WaveformCppBridge.h */,
+				855EB0C82DFD4BAA91548E9D /* WaveformCppBridge.mm */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -398,6 +407,7 @@
 				884EE54AF292CD6B41DB28A8 /* AudioEnginePlugin.swift in Sources */,
 				6935502BD657278DEDD7D59D /* AudioSessionManager.swift in Sources */,
 				CCA80C2F261166B37EA95C9E /* NowPlayingService.swift in Sources */,
+				AB6E48F09337438B91C743D0 /* WaveformCppBridge.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -134,6 +134,20 @@ class AudioPlayerService {
     });
   }
 
+  /// Decode an audio file to raw float32 mono PCM via Swift/AVAudioFile.
+  /// The returned [Float32List] is passed to [WaveformFFI.generatePeaks]
+  /// which calls the C++ engine directly via dart:ffi.
+  Future<Float32List> decodePCM(String filePath) async {
+    final result = await _control.invokeMethod<dynamic>(
+      'decodePCM',
+      {'filePath': filePath},
+    );
+    if (result == null) return Float32List(0);
+    if (result is Float32List) return result;
+    if (result is Uint8List) return result.buffer.asFloat32List();
+    return Float32List(0);
+  }
+
   void dispose() {
     _stateController.close();
     _fftController.close();

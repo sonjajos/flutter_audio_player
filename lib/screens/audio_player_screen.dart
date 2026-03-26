@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../widgets/playback_controls.dart';
 import '../widgets/circular_visualizer.dart';
+import '../widgets/waveform_seeker.dart';
 import '../services/audio_player_service.dart';
+import '../services/waveform_ffi.dart';
 
 class AudioPlayerScreen extends ConsumerStatefulWidget {
   const AudioPlayerScreen({super.key});
@@ -20,11 +22,19 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
   StreamSubscription<PlayerStateEvent>? _stateSub;
   StreamSubscription<String>? _commandSub;
 
+  List<double>? _waveformPeaks;
+  String? _waveformTrackPath; // track which file peaks belong to
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _subscribeStreams();
+    // Load waveform for any track that's already playing when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final track = ref.read(audioTrackNotifierProvider).currentTrack;
+      if (track != null) _loadWaveform(track.filePath);
+    });
   }
 
   @override
@@ -43,6 +53,32 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
     } else if (state == AppLifecycleState.resumed) {
       // App is back — resubscribe to all streams.
       _subscribeStreams();
+    }
+  }
+
+  Future<void> _loadWaveform(String filePath) async {
+    if (_waveformTrackPath == filePath) return; // already loaded
+    setState(() {
+      _waveformPeaks = null;
+      _waveformTrackPath = filePath;
+    });
+    final service = ref.read(audioPlayerServiceProvider);
+    try {
+      final pcm = await service.decodePCM(filePath);
+      debugPrint('[WaveformDebug] decodePCM returned ${pcm.length} samples');
+      if (!mounted) return;
+      if (pcm.isEmpty) {
+        debugPrint('[WaveformDebug] PCM is empty — skipping FFI call');
+        return;
+      }
+      final peaks = WaveformFFI.generatePeaks(pcm, 300);
+      debugPrint(
+        '[WaveformDebug] FFI generatePeaks returned ${peaks.length} peaks',
+      );
+      if (!mounted) return;
+      setState(() => _waveformPeaks = peaks);
+    } catch (e, st) {
+      debugPrint('[WaveformDebug] ERROR: $e\n$st');
     }
   }
 
@@ -96,6 +132,16 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    // React to track changes — load waveform only when currentTrack changes
+    ref.listen(audioTrackNotifierProvider.select((s) => s.currentTrack), (
+      prev,
+      next,
+    ) {
+      if (next != null && next.filePath != prev?.filePath) {
+        _loadWaveform(next.filePath);
+      }
+    });
+
     final trackState = ref.watch(audioTrackNotifierProvider);
     final currentTrack = trackState.currentTrack;
     final bandCount = ref.watch(bandCountProvider);
@@ -109,7 +155,7 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
           TextButton(
             onPressed: _cycleBandCount,
             child: Text(
-              '${bandCount}b',
+              '${bandCount * 2}b',
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
           ),
@@ -139,7 +185,8 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
                   currentTrack.artist,
                   style: const TextStyle(color: Colors.white54, fontSize: 16),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 24),
+                const SizedBox(height: 24),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -147,6 +194,19 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
                       key: _visualizerKey,
                       bandCount: bandCount,
                     ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: WaveformSeeker(
+                    peaks: _waveformPeaks,
+                    progress: trackState.duration > Duration.zero
+                        ? trackState.position.inMilliseconds /
+                              trackState.duration.inMilliseconds
+                        : 0.0,
+                    currentPositionMs: trackState.position.inMilliseconds,
+                    durationMs: trackState.duration.inMilliseconds,
+                    isPlaying: trackState.isPlaying,
                   ),
                 ),
                 const SizedBox(height: 24),

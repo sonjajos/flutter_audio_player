@@ -27,6 +27,9 @@ dependencies:
   # File picking for upload
   file_picker: ^8.3.7
 
+  # FFI for calling C++ waveform engine directly from Dart
+  ffi: ^2.1.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
