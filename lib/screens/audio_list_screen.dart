@@ -16,17 +16,6 @@ class AudioListScreen extends ConsumerStatefulWidget {
 class _AudioListScreenState extends ConsumerState<AudioListScreen> {
   bool _isPicking = false;
 
-  @override
-  void initState() {
-    super.initState();
-    final metadataState = ref.read(audioMetadataNotifierProvider);
-    if (metadataState.tracks.isEmpty && !metadataState.isLoading) {
-      Future.microtask(() {
-        ref.read(audioMetadataNotifierProvider.notifier).loadTracks();
-      });
-    }
-  }
-
   Future<void> _uploadAudio() async {
     if (_isPicking) return;
     _isPicking = true;

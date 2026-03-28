@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/audio_track.dart';
 import '../services/audio_player_service.dart';
 import '../services/sqlite_service.dart';
+import 'service_providers.dart';
 
 class AudioMetadataState {
   final List<AudioTrack> tracks;
@@ -17,16 +18,21 @@ class AudioMetadataState {
   }
 }
 
-class AudioMetadataNotifier extends StateNotifier<AudioMetadataState> {
-  final AudioPlayerService _playerService;
-  final SQLiteService _sqliteService;
+class AudioMetadataNotifier extends Notifier<AudioMetadataState> {
+  late AudioPlayerService _playerService;
+  late SQLiteService _sqliteService;
 
-  AudioMetadataNotifier(this._playerService, this._sqliteService)
-    : super(const AudioMetadataState());
+  @override
+  AudioMetadataState build() {
+    _playerService = ref.watch(audioPlayerServiceProvider);
+    _sqliteService = ref.watch(sqliteServiceProvider);
+    // Trigger initial load after the first frame so state is fully initialized
+    Future.microtask(loadTracks);
+    return const AudioMetadataState(isLoading: true);
+  }
 
   Future<void> loadTracks() async {
     state = state.copyWith(isLoading: true);
-    // Scan for files in Documents/audio_files/ not yet in the DB
     await _scanLocalFiles();
     final tracks = await _sqliteService.getAllTracks();
     state = state.copyWith(tracks: tracks, isLoading: false);
@@ -73,10 +79,7 @@ class AudioMetadataNotifier extends StateNotifier<AudioMetadataState> {
   }
 
   Future<void> uploadTrack(String filePath) async {
-    // 1. Copy file to persistent Documents directory
     final persistentPath = await _playerService.copyToDocuments(filePath);
-
-    // 2. Extract metadata (title, artist, duration) via native AVAsset
     final metadata = await _playerService.getMetadata(persistentPath);
 
     final track = AudioTrack(
@@ -86,7 +89,6 @@ class AudioMetadataNotifier extends StateNotifier<AudioMetadataState> {
       duration: Duration(milliseconds: metadata['durationMs'] as int),
     );
 
-    // 3. Save to SQLite
     await _sqliteService.insertTrack(track);
     await loadTracks();
   }
@@ -94,10 +96,7 @@ class AudioMetadataNotifier extends StateNotifier<AudioMetadataState> {
   Future<void> removeTrack(AudioTrack track) async {
     if (track.id == null) return;
 
-    // Delete the audio file from Documents
     await _playerService.deleteFile(track.filePath);
-
-    // Delete from database
     await _sqliteService.deleteTrack(track.id!);
     await loadTracks();
   }

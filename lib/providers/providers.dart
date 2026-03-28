@@ -1,22 +1,22 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/sqlite_service.dart';
 import '../services/audio_player_service.dart';
+import 'service_providers.dart';
 import 'audio_track_notifier.dart';
 import 'audio_metadata_notifier.dart';
 
-// Services
-final sqliteServiceProvider = Provider<SQLiteService>((ref) {
-  return SQLiteService();
-});
-
-final audioPlayerServiceProvider = Provider<AudioPlayerService>((ref) {
-  final service = AudioPlayerService();
-  ref.onDispose(() => service.dispose());
-  return service;
-});
+export 'service_providers.dart';
 
 // Band count: 16, 32, 64, or 128
-final bandCountProvider = StateProvider<int>((ref) => 32);
+class BandCountNotifier extends Notifier<int> {
+  @override
+  int build() => 32;
+
+  void set(int count) => state = count;
+}
+
+final bandCountProvider = NotifierProvider<BandCountNotifier, int>(
+  BandCountNotifier.new,
+);
 
 // Playback state stream from native engine
 final playerStateStreamProvider = StreamProvider<PlayerStateEvent>((ref) {
@@ -38,14 +38,11 @@ final commandStreamProvider = StreamProvider<String>((ref) {
 
 // State notifiers
 final audioTrackNotifierProvider =
-    StateNotifierProvider<AudioTrackNotifier, AudioTrackState>((ref) {
-      final playerService = ref.watch(audioPlayerServiceProvider);
-      return AudioTrackNotifier(playerService);
-    });
+    NotifierProvider<AudioTrackNotifier, AudioTrackState>(
+      AudioTrackNotifier.new,
+    );
 
 final audioMetadataNotifierProvider =
-    StateNotifierProvider<AudioMetadataNotifier, AudioMetadataState>((ref) {
-      final playerService = ref.watch(audioPlayerServiceProvider);
-      final sqliteService = ref.watch(sqliteServiceProvider);
-      return AudioMetadataNotifier(playerService, sqliteService);
-    });
+    NotifierProvider<AudioMetadataNotifier, AudioMetadataState>(
+      AudioMetadataNotifier.new,
+    );

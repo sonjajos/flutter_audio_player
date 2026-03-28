@@ -182,5 +182,6 @@ class _CircularPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CircularPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _CircularPainter oldDelegate) =>
+      oldDelegate.bands != bands || oldDelegate.maxHeightFraction != maxHeightFraction;
 }

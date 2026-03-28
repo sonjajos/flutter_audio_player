@@ -182,12 +182,13 @@ flutter_audio_player/
 │   ├── models/
 │   │   └── audio_track.dart              # AudioTrack data class (id, title, artist, filePath, duration)
 │   ├── providers/
-│   │   ├── providers.dart                # All Riverpod provider declarations
-│   │   ├── audio_track_notifier.dart     # Playback state (current track, position, queue)
-│   │   └── audio_metadata_notifier.dart  # Library state (all imported tracks)
+│   │   ├── providers.dart                # Riverpod provider declarations (notifiers, stream providers)
+│   │   ├── service_providers.dart        # Service providers (audioPlayerServiceProvider, sqliteServiceProvider)
+│   │   ├── audio_track_notifier.dart     # Playback state (current track, position, queue, stream wiring)
+│   │   └── audio_metadata_notifier.dart  # Library state (all imported tracks, auto-loads on first use)
 │   ├── services/
-│   │   ├── audio_player_service.dart     # Singleton wrapping platform channels
-│   │   ├── sqlite_service.dart           # Singleton for SQLite track metadata persistence
+│   │   ├── audio_player_service.dart     # Wraps platform channels; owns broadcast StreamControllers
+│   │   ├── sqlite_service.dart           # SQLite track metadata persistence with dispose support
 │   │   └── waveform_ffi.dart             # C++ FFI bindings for waveform generation
 │   ├── screens/
 │   │   ├── audio_list_screen.dart        # Library view with file import and mini player
@@ -217,7 +218,9 @@ flutter_audio_player/
 
 ### Providers (Riverpod)
 
-The app uses [Riverpod](https://riverpod.dev/) for state management. The `StateNotifier` pattern keeps all mutable state in notifiers; widgets subscribe via `ref.watch`.
+The app uses [Riverpod](https://riverpod.dev/) for state management with the `Notifier` / `NotifierProvider` API. All mutable state lives in notifiers; widgets subscribe via `ref.watch`.
+
+Service providers live in `service_providers.dart` to avoid circular imports between notifier files and the main providers file.
 
 #### `AudioTrackNotifier`
 
@@ -227,8 +230,8 @@ The central notifier for all playback state. It bridges the native audio engine 
 ```dart
 currentTrack: AudioTrack?    // Currently loaded track
 isPlaying: bool              // Playback active?
-positionMs: int              // Current position in milliseconds
-durationMs: int              // Track duration in milliseconds
+position: Duration           // Current playback position
+duration: Duration           // Track duration
 queue: List<AudioTrack>      // Current play queue
 currentIndex: int            // Index in queue
 ```
@@ -236,11 +239,11 @@ currentIndex: int            // Index in queue
 **Key methods:**
 - `playAt(index, queue)` — Load a track from the queue and start playback
 - `pause()`, `resume()`, `stop()`, `next()`, `previous()` — Playback control
-- `seek(positionMs)` — Seek to a specific position
+- `updatePosition(position)` — Manual position update
 
-**Event wiring:** Subscribes to native event channels via stream providers:
-- `playerStateStreamProvider` → updates `isPlaying`, `positionMs`, `durationMs`
-- `commandStreamProvider` → handles lock screen commands and track completion
+**Event wiring:** The notifier subscribes to native event streams directly inside `build()` and cleans up via `ref.onDispose`. No stream wiring in widgets.
+- `stateStream` → updates `isPlaying`, `position`, `duration`
+- `commandStream` → handles lock screen commands and track completion
 
 #### `AudioMetadataNotifier`
 
@@ -257,6 +260,17 @@ isLoading: bool             // Loading in progress?
 - `uploadTrack(fileUri)` — Copies file to Documents, extracts metadata, saves to SQLite
 - `removeTrack(track)` — Deletes from filesystem and SQLite
 
+`loadTracks()` is called automatically from `build()` via `Future.microtask` so the library loads on first access without any widget-side initialization code.
+
+#### `BandCountNotifier`
+
+A simple `Notifier<int>` that holds the currently selected FFT band count. Replaces a deprecated `StateProvider`.
+
+```dart
+final bandCountProvider = NotifierProvider<BandCountNotifier, int>(BandCountNotifier.new);
+// Usage: ref.read(bandCountProvider.notifier).set(64);
+```
+
 #### Stream Providers
 
 | Provider | Source | Purpose |
@@ -264,17 +278,16 @@ isLoading: bool             // Loading in progress?
 | `playerStateStreamProvider` | `audio_player/state` EventChannel | Position, duration, play/pause state at ~10 Hz |
 | `fftStreamProvider` | `audio_player/fft` EventChannel | FFT band data at audio tap rate (~60+ Hz) |
 | `commandStreamProvider` | `audio_player/commands` EventChannel | Lock screen commands and track completion |
-| `bandCountProvider` | Local state | Currently selected FFT band count (16/32/64/128) |
 
 #### Module-Level FFT Handling
 
-The `PillarVisualizer` widget subscribes to `fftStreamProvider` directly inside the widget, using a stream subscription that writes into a pre-allocated `Float32List`. Updates are driven by an `AnimationController` ticker rather than `setState` calls, so the widget repaints at a steady frame rate without re-triggering the build phase for high-frequency FFT events. This mirrors the broadcast stream pattern used in the React Native counterpart.
+The `PillarVisualizer` widget subscribes directly to `AudioPlayerService.fftStream` using a `StreamSubscription` that writes into a pre-allocated `Float32List`. Updates are driven by an `AnimationController` ticker rather than `setState` calls, so the widget repaints at a steady frame rate without re-triggering the build phase for high-frequency FFT events. This mirrors the broadcast stream pattern used in the React Native counterpart.
 
 ---
 
 ### Services (Singletons)
 
-All services are module-level singletons instantiated once via Riverpod providers and never destroyed.
+All services are instantiated once via Riverpod providers in `service_providers.dart`. Each provider registers a `ref.onDispose` callback so resources are released when the `ProviderScope` is torn down.
 
 #### `AudioPlayerService`
 
@@ -558,9 +571,9 @@ CREATE TABLE IF NOT EXISTS tracks (
 );
 ```
 
-**Access pattern:** `SQLiteService` opens the database connection lazily and caches it. All access goes through the singleton to avoid multiple open connections.
+**Access pattern:** `SQLiteService` opens the database connection lazily and caches it. All access goes through the singleton to avoid multiple open connections. The `dispose()` method closes the connection when the provider is torn down.
 
-**Sync strategy:** On each app launch, `AudioMetadataNotifier._scanLocalFiles()` reconciles the database with actual files on disk:
+**Sync strategy:** On first access, `AudioMetadataNotifier` calls `_scanLocalFiles()` automatically to reconcile the database with actual files on disk:
 1. Remove DB entries whose files no longer exist
 2. Import any new files found in `Documents/audio_files/` not yet in the DB (metadata extracted via native `getMetadata`)
 3. Update the Riverpod state so the list re-renders
@@ -643,7 +656,7 @@ The key design insight is that FFT values flow from native → Dart stream → `
    └── onFFTData → EventChannel → fftStream
        └── PillarVisualizer writes to Float32List → CustomPainter redraws
 
-10. AudioTrackNotifier._loadWaveform(filePath) [background, async]
+10. AudioPlayerScreen._loadWaveform(filePath) [background, async]
     └── AudioPlayerService.decodePCM(filePath) [method channel]
         └── Swift: AVAudioFile → AVAudioPCMBuffer → mono Float32List
     └── WaveformFFI.generatePeaks(samples, barCount) [dart:ffi, isolate]

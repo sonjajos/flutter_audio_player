@@ -15,21 +15,20 @@ class AudioPlayerScreen extends ConsumerStatefulWidget {
   ConsumerState<AudioPlayerScreen> createState() => _AudioPlayerScreenState();
 }
 
-class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
-    with WidgetsBindingObserver {
+class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> {
   final _visualizerKey = GlobalKey<PillarVisualizerState>();
   StreamSubscription<FFTEvent>? _fftSub;
-  StreamSubscription<PlayerStateEvent>? _stateSub;
-  StreamSubscription<String>? _commandSub;
 
   List<double>? _waveformPeaks;
-  String? _waveformTrackPath; // track which file peaks belong to
+  String? _waveformTrackPath;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _subscribeStreams();
+    final service = ref.read(audioPlayerServiceProvider);
+    _fftSub = service.fftStream.listen((event) {
+      _visualizerKey.currentState?.updateBands(event.bands);
+    });
     // Load waveform for any track that's already playing when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final track = ref.read(audioTrackNotifierProvider).currentTrack;
@@ -39,25 +38,12 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cancelStreams();
+    _fftSub?.cancel();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      // App is going to background — cancel ALL streams.
-      // Native side stops everything too, so nothing to consume.
-      _cancelStreams();
-    } else if (state == AppLifecycleState.resumed) {
-      // App is back — resubscribe to all streams.
-      _subscribeStreams();
-    }
-  }
-
   Future<void> _loadWaveform(String filePath) async {
-    if (_waveformTrackPath == filePath) return; // already loaded
+    if (_waveformTrackPath == filePath) return;
     setState(() {
       _waveformPeaks = null;
       _waveformTrackPath = filePath;
@@ -82,51 +68,12 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen>
     }
   }
 
-  void _subscribeStreams() {
-    final service = ref.read(audioPlayerServiceProvider);
-
-    // Listen to native playback state
-    _stateSub = service.stateStream.listen((event) {
-      ref
-          .read(audioTrackNotifierProvider.notifier)
-          .updateFromNativeState(event);
-    });
-
-    // Listen to remote commands (lock screen + track completion)
-    _commandSub = service.commandStream.listen((command) {
-      final notifier = ref.read(audioTrackNotifierProvider.notifier);
-      switch (command) {
-        case 'play':
-          notifier.resume();
-        case 'pause':
-          notifier.pause();
-        case 'next':
-          notifier.next();
-        case 'previous':
-          notifier.previous();
-        case 'completed':
-          notifier.next();
-      }
-    });
-
-    // Subscribe to native FFT stream
-    _fftSub = service.fftStream.listen((event) {
-      _visualizerKey.currentState?.updateBands(event.bands);
-    });
-  }
-
-  void _cancelStreams() {
-    _fftSub?.cancel();
-    _stateSub?.cancel();
-    _commandSub?.cancel();
-  }
-
   void _cycleBandCount() {
     const counts = [16, 32, 64, 128];
     final current = ref.read(bandCountProvider);
     final index = counts.indexOf(current);
     final next = counts[(index + 1) % counts.length];
-    ref.read(bandCountProvider.notifier).state = next;
+    ref.read(bandCountProvider.notifier).set(next);
     ref.read(audioPlayerServiceProvider).setBandCount(next);
   }
 

@@ -46,4 +46,9 @@ class SQLiteService {
     final db = await database;
     await db.delete('tracks', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<void> dispose() async {
+    await _database?.close();
+    _database = null;
+  }
 }

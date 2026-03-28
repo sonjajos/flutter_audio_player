@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/audio_track.dart';
 import '../services/audio_player_service.dart';
+import 'service_providers.dart';
 
 class AudioTrackState {
   final AudioTrack? currentTrack;
@@ -38,10 +40,47 @@ class AudioTrackState {
   }
 }
 
-class AudioTrackNotifier extends StateNotifier<AudioTrackState> {
-  final AudioPlayerService _playerService;
+class AudioTrackNotifier extends Notifier<AudioTrackState> {
+  late AudioPlayerService _playerService;
+  StreamSubscription<PlayerStateEvent>? _stateSub;
+  StreamSubscription<String>? _commandSub;
 
-  AudioTrackNotifier(this._playerService) : super(const AudioTrackState());
+  @override
+  AudioTrackState build() {
+    _playerService = ref.watch(audioPlayerServiceProvider);
+
+    // Subscribe to native playback state
+    _stateSub = _playerService.stateStream.listen((event) {
+      state = state.copyWith(
+        isPlaying: event.isPlaying,
+        position: event.position,
+        duration: event.duration,
+      );
+    });
+
+    // Subscribe to remote commands (lock screen + track completion)
+    _commandSub = _playerService.commandStream.listen((command) {
+      switch (command) {
+        case 'play':
+          resume();
+        case 'pause':
+          pause();
+        case 'next':
+          next();
+        case 'previous':
+          previous();
+        case 'completed':
+          next();
+      }
+    });
+
+    ref.onDispose(() {
+      _stateSub?.cancel();
+      _commandSub?.cancel();
+    });
+
+    return const AudioTrackState();
+  }
 
   /// Play a track at a specific index in the given (or current) queue.
   Future<void> playAt(int index, {List<AudioTrack>? queue}) async {
@@ -89,13 +128,5 @@ class AudioTrackNotifier extends StateNotifier<AudioTrackState> {
 
   void updatePosition(Duration position) {
     state = state.copyWith(position: position);
-  }
-
-  void updateFromNativeState(PlayerStateEvent event) {
-    state = state.copyWith(
-      isPlaying: event.isPlaying,
-      position: event.position,
-      duration: event.duration,
-    );
   }
 }
