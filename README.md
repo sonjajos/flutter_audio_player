@@ -2,6 +2,26 @@
 
 An iOS audio player built with Flutter, featuring real-time FFT audio visualization and waveform display. This project is part of a master thesis comparing performance characteristics between Flutter, React Native, and native Swift implementations of an equivalent audio player application. The app is currently runnable on **iOS only**.
 
+<table>
+  <tr>
+    <td>
+      <img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-28 at 11 52 31" src="https://github.com/user-attachments/assets/792fbb52-d759-4e8f-af6d-7c559db5d603" />
+    </td>
+    <td>
+      <img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-28 at 11 52 40" src="https://github.com/user-attachments/assets/e81907b9-890c-4834-8863-ff0b251e837b" />
+    </td>
+    <td>
+      <img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-28 at 11 52 47" src="https://github.com/user-attachments/assets/fdf13dad-32c7-4a67-a2d0-533d002fc5f4" />
+    </td>
+    <td>
+      <img width="1206" height="2622" alt="<img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-28 at 11 52 52" src="https://github.com/user-attachments/assets/c14c575c-ce17-4a2a-b890-77c0dcc218c7" />
+    </td>
+    <td>
+      <img width="1206" height="2622" alt="Simulator Screenshot - iPhone 17 Pro - 2026-03-28 at 11 53 00" src="https://github.com/user-attachments/assets/fe42d235-f8a9-46de-ba25-1e1b3c52f0a1" />
+    </td>
+  </tr>
+</table>
+
 ---
 
 ## Table of Contents
