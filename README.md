@@ -1,270 +1,637 @@
 # Flutter Audio Player
 
-A full-featured music player for iOS built with Flutter and native Swift — featuring real-time FFT audio visualization, lock screen controls, and a clean dark UI.
-
-<img width="618" height="265" alt="Screenshot 2026-03-22 at 18 38 16" src="https://github.com/user-attachments/assets/f61053dc-6d56-4560-9c78-7f707840f1b4" />
+An iOS audio player built with Flutter, featuring real-time FFT audio visualization and waveform display. This project is part of a master thesis comparing performance characteristics between Flutter, React Native, and native Swift implementations of an equivalent audio player application. The app is currently runnable on **iOS only**.
 
 ---
 
-## Features
+## Table of Contents
 
-- **Playback** — Play, pause, seek, skip tracks with frame-accurate control
-- **Library Management** — Import audio files (mp3, m4a, wav, aac, flac, ogg, aiff), auto-extract metadata, persistent storage
-- **Real-Time Visualizer** — Live FFT pillar/bar visualizer with configurable bands (16 / 32 / 64 / 128), logarithmic frequency scaling, gradient coloring
-- **Lock Screen & Control Center** — Now Playing info + remote playback controls via the iOS MediaPlayer framework
-- **Audio Session Handling** — Auto-pause on headphone disconnect and call interruptions
+- [App Description](#app-description)
+- [Prerequisites & Tools](#prerequisites--tools)
+- [Running the App](#running-the-app)
+- [Use Cases](#use-cases)
+- [Architecture](#architecture)
+  - [Overview](#overview)
+  - [Directory Structure](#directory-structure)
+  - [Providers (Riverpod)](#providers-riverpod)
+  - [Services (Singletons)](#services-singletons)
+  - [Screens & Navigation](#screens--navigation)
+  - [Widgets](#widgets)
+  - [Audio Visualizer](#audio-visualizer)
+  - [Waveform Seeker](#waveform-seeker)
+  - [AudioEnginePlugin (Swift)](#audioengineplugin-swift)
+  - [Waveform C++ Module](#waveform-c-module)
+  - [SQLite Storage](#sqlite-storage)
+  - [FFT Data Flow](#fft-data-flow)
+  - [End-to-End Playback Flow](#end-to-end-playback-flow)
 
 ---
 
-## Requirements
+## App Description
 
-| Tool                  | Version |
-| --------------------- | ------- |
-| Flutter SDK           | 3.11.3+ |
-| Dart SDK              | 3.x     |
-| Xcode                 | 14+     |
-| iOS deployment target | 12.0+   |
-| CocoaPods             | Latest  |
-
-> Android is not currently supported — the native audio engine is iOS-only.
+This audio player allows users to import audio files from their device, browse a local library, and play tracks with a real-time circular audio visualizer and waveform seeker. It is architected to be performance-measurable — specifically designed for comparison against equivalent React Native and native Swift implementations as part of a master thesis on cross-platform mobile performance.
 
 ---
 
-## Getting Started
+## Prerequisites & Tools
 
-### 1. Clone & install dependencies
+### System Requirements
+
+- macOS (required for iOS development)
+- Xcode 15 or later (with iOS 16+ SDK)
+- iOS Simulator or physical iOS device
+
+### Required Tools
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Flutter | 3.x+ | UI framework and toolchain |
+| Dart | 3.x+ | Programming language |
+| CocoaPods | Latest | iOS dependency manager |
+| Xcode | 15+ | iOS build toolchain |
+
+### Installation
 
 ```bash
-git clone <repo-url>
-cd flutter_audio_player
+# Install Flutter (https://docs.flutter.dev/get-started/install/macos)
+
+# Install CocoaPods (via Homebrew)
+brew install cocoapods
+```
+
+---
+
+## Running the App
+
+```bash
+# Install Flutter dependencies
 flutter pub get
-```
 
-### 2. Install CocoaPods
+# Install iOS CocoaPods
+cd ios && pod install && cd ..
 
-```bash
-cd ios
-pod install
-cd ..
-```
-
-### 3. Run on a device or simulator
-
-```bash
+# Build and run on iOS simulator (debug mode)
 flutter run
+
+# Run on a specific simulator
+flutter run -d "iPhone 15"
+
+# Build release mode
+flutter run --release
 ```
-
-For a release build:
-
-```bash
-flutter build ios --release
-```
-
-### 4. Open in Xcode (optional)
-
-```bash
-open ios/Runner.xcworkspace
-```
-
-Use Xcode to manage signing, provisioning, and device deployment.
 
 ---
 
-## Project Structure
+## Use Cases
 
-```
-flutter_audio_player/
-├── lib/
-│   ├── main.dart                        # App entry, theme, router setup
-│   ├── models/
-│   │   └── audio_track.dart             # Data model & serialization
-│   ├── services/
-│   │   ├── audio_player_service.dart    # Platform channel wrapper
-│   │   └── sqlite_service.dart          # SQLite persistence
-│   ├── providers/
-│   │   ├── providers.dart               # All Riverpod provider definitions
-│   │   ├── audio_track_notifier.dart    # Playback state & queue logic
-│   │   └── audio_metadata_notifier.dart # Track library state
-│   ├── router/
-│   │   └── app_router.dart              # GoRouter navigation
-│   ├── screens/
-│   │   ├── audio_list_screen.dart       # Track browser
-│   │   └── audio_player_screen.dart     # Full player UI
-│   └── widgets/
-│       ├── audio_list_tile.dart         # Swipeable list item
-│       ├── mini_player_bar.dart         # Compact player bar
-│       ├── circular_visualizer.dart       # FFT visualizer widget
-│       └── playback_controls.dart       # Play/pause/skip controls
-│
-├── ios/
-│   └── Runner/
-│       ├── AudioEnginePlugin.swift      # Platform channel registration & file ops
-│       ├── AudioEnginePlayer.swift      # Core audio engine + FFT processing
-│       ├── AudioSessionManager.swift    # AVAudioSession + interruption handling
-│       └── NowPlayingService.swift      # Lock screen / remote command center
-│
-└── pubspec.yaml
-```
+1. **Import audio files** — Pick one or more audio files (MP3, M4A, WAV, AAC, FLAC, AIFF) from the device using the system document picker. Files are copied to the app's Documents directory for persistence.
+
+2. **Browse audio library** — View all imported audio files in a scrollable list showing title, artist, and duration. Swipe left on any track to delete it.
+
+3. **Play a track** — Tap any track in the library to open the full-screen player. Playback begins immediately.
+
+4. **Playback controls** — Play, pause, resume, stop, skip to next, or go to previous track. Controls are also available from the lock screen and Control Center.
+
+5. **Real-time visualization** — View a circular audio visualizer that reacts to the audio frequency spectrum in real time using FFT analysis.
+
+6. **Waveform navigation** — View a waveform representation of the current track with a progress indicator showing elapsed and remaining time.
+
+7. **Adjust FFT resolution** — Cycle through band count presets (16 / 32 / 64 / 128 bands) from the player screen to change visualizer detail.
+
+8. **Mini player** — While browsing the library with a track loaded, a compact player bar at the bottom shows the visualizer, track info, and playback controls.
+
+9. **Background audio** — Audio continues playing when the app goes to the background. Lock screen controls allow playback management without returning to the app.
 
 ---
 
 ## Architecture
 
-### State Management — Riverpod
-
-The app uses **Flutter Riverpod** (v2.6.1) with a layered provider structure:
-
-| Provider                        | Type                  | Purpose                                                  |
-| ------------------------------- | --------------------- | -------------------------------------------------------- |
-| `sqliteServiceProvider`         | Provider              | SQLite database singleton                                |
-| `audioPlayerServiceProvider`    | Provider              | Platform channel bridge singleton                        |
-| `bandCountProvider`             | StateProvider         | Currently selected FFT band count                        |
-| `playerStateStreamProvider`     | StreamProvider        | Playback state from native (position, duration, playing) |
-| `fftStreamProvider`             | StreamProvider        | Real-time FFT band data from native                      |
-| `commandStreamProvider`         | StreamProvider        | Remote commands (lock screen, completion)                |
-| `audioTrackNotifierProvider`    | StateNotifierProvider | Queue, current track, play/pause logic                   |
-| `audioMetadataNotifierProvider` | StateNotifierProvider | Library list, file upload/delete                         |
-
-### Data Flow
+### Overview
 
 ```
-UI (Screens / Widgets)
-        ↕  reads & watches providers
-Riverpod Providers (State)
-        ↕  calls methods / listens to streams
-AudioPlayerService  (Dart)
-        ↕  Flutter Platform Channels
-iOS Native Layer (Swift)
-  ├── AudioEnginePlayer   — AVAudioEngine + vDSP FFT
-  ├── AudioSessionManager — AVAudioSession
-  └── NowPlayingService   — MediaPlayer framework
+┌─────────────────────────────────────────────────────┐
+│                      Flutter (Dart)                 │
+│                                                     │
+│  ┌──────────┐  ┌──────────────────────────────────┐ │
+│  │  Screens │  │         Riverpod Providers       │ │
+│  │  & Nav   │  │  AudioTrackNotifier              │ │
+│  └────┬─────┘  │  AudioMetadataNotifier           │ │
+│       │        │  fftStreamProvider               │ │
+│  ┌────▼─────┐  └───────────────┬──────────────────┘ │
+│  │  Widgets │                  │                    │
+│  │Visualizer│  ┌───────────────▼──────────────────┐ │
+│  │Waveform  │  │         Services (Singletons)    │ │
+│  │Controls  │  │  AudioPlayerService              │ │
+│  └──────────┘  │  SQLiteService                   │ │
+│                │  WaveformFFI                     │ │
+│                └───────────────┬──────────────────┘ │
+└────────────────────────────────┼────────────────────┘
+                                 │ Platform Channels
+                                 │ (MethodChannel / EventChannel)
+┌────────────────────────────────▼────────────────────┐
+│              AudioEnginePlugin (Swift)              │
+│                                                     │
+│  AudioEnginePlugin (channel handler)                │
+│  ├── AudioEnginePlayer (AVAudioEngine + FFT)        │
+│  ├── AudioSessionManager (AVAudioSession)           │
+│  └── NowPlayingService (MPRemoteCommandCenter)      │
+│                          │                          │
+│                          ▼                          │
+│              WaveformCppBridge (Obj-C++)            │
+│                          │                          │
+│                          ▼                          │
+│           waveform_peaks.cpp (C++ Library)          │
+│              ↑ called directly via dart:ffi         │
+└─────────────────────────────────────────────────────┘
+                           │
+                           ▼
+              SQLite Database (sqflite)
+              Documents/audio_files/ (filesystem)
 ```
 
 ---
 
-## Native Modules (iOS)
-
-The app does **not** use third-party audio packages. All audio processing is implemented in native Swift for full control over the FFT pipeline and audio engine.
-
-### AudioEnginePlugin.swift
-
-Registers and routes all Flutter platform channels:
-
-| Channel                 | Type          | Direction        | Purpose                             |
-| ----------------------- | ------------- | ---------------- | ----------------------------------- |
-| `audio_player/control`  | MethodChannel | Flutter → Native | Playback commands & file operations |
-| `audio_player/state`    | EventChannel  | Native → Flutter | Playback state updates              |
-| `audio_player/fft`      | EventChannel  | Native → Flutter | Real-time FFT band data             |
-| `audio_player/commands` | EventChannel  | Native → Flutter | Lock screen remote commands         |
-
-**MethodChannel API (`audio_player/control`):**
+### Directory Structure
 
 ```
-play(filePath, title, artist)
-pause()
-resume()
-stop()
-seek(positionMs)
-setBandCount(count)           // 16 | 32 | 64 | 128
-getMetadata(filePath)         → {title, artist, durationMs}
-copyToDocuments(filePath)     → persistentPath
-listAudioFiles()              → [filePaths]
-deleteFile(filePath)
+flutter_audio_player/
+├── lib/
+│   ├── main.dart                          # App entry point, ProviderScope root
+│   ├── router/
+│   │   └── app_router.dart               # GoRouter configuration (/ and /player)
+│   ├── models/
+│   │   └── audio_track.dart              # AudioTrack data class (id, title, artist, filePath, duration)
+│   ├── providers/
+│   │   ├── providers.dart                # All Riverpod provider declarations
+│   │   ├── audio_track_notifier.dart     # Playback state (current track, position, queue)
+│   │   └── audio_metadata_notifier.dart  # Library state (all imported tracks)
+│   ├── services/
+│   │   ├── audio_player_service.dart     # Singleton wrapping platform channels
+│   │   ├── sqlite_service.dart           # Singleton for SQLite track metadata persistence
+│   │   └── waveform_ffi.dart             # C++ FFI bindings for waveform generation
+│   ├── screens/
+│   │   ├── audio_list_screen.dart        # Library view with file import and mini player
+│   │   └── audio_player_screen.dart      # Full-screen player with visualizer and waveform
+│   └── widgets/
+│       ├── circular_visualizer.dart      # Circular FFT visualizer (CustomPainter)
+│       ├── waveform_seeker.dart          # Static waveform with progress indicator
+│       ├── playback_controls.dart        # Play/pause/next/previous buttons
+│       ├── mini_player_bar.dart          # Compact player bar shown on list screen
+│       └── audio_list_tile.dart          # List item with swipe-to-delete
+│
+├── ios/Runner/
+│   ├── AppDelegate.swift                 # App delegate, registers AudioEnginePlugin
+│   ├── AudioEnginePlugin.swift           # Platform channel handler, file I/O
+│   ├── AudioEnginePlayer.swift           # Core AVAudioEngine player + FFT pipeline
+│   ├── AudioSessionManager.swift         # AVAudioSession lifecycle and interruptions
+│   ├── NowPlayingService.swift           # Lock screen / Control Center integration
+│   ├── waveform_peaks.h                  # C extern declaration for FFI lookup
+│   ├── WaveformCppBridge.h               # Obj-C++ bridge header
+│   ├── WaveformCppBridge.mm              # Obj-C++ bridge (unity-builds waveform_peaks.cpp)
+│   └── SceneDelegate.swift               # UIScene lifecycle
+│
+└── pubspec.yaml                          # Flutter dependencies
 ```
 
-### AudioEnginePlayer.swift
+---
 
-Core audio engine built on **AVAudioEngine** + **AVAudioPlayerNode**:
+### Providers (Riverpod)
 
-- Loads audio files via `AVAudioFile` with frame-accurate seeking
-- Tracks position via a 100ms repeating timer
-- Uses **load generation** to safely cancel in-flight completions when switching tracks
+The app uses [Riverpod](https://riverpod.dev/) for state management. The `StateNotifier` pattern keeps all mutable state in notifiers; widgets subscribe via `ref.watch`.
+
+#### `AudioTrackNotifier`
+
+The central notifier for all playback state. It bridges the native audio engine to the Flutter widget tree.
+
+**State:**
+```dart
+currentTrack: AudioTrack?    // Currently loaded track
+isPlaying: bool              // Playback active?
+positionMs: int              // Current position in milliseconds
+durationMs: int              // Track duration in milliseconds
+queue: List<AudioTrack>      // Current play queue
+currentIndex: int            // Index in queue
+```
+
+**Key methods:**
+- `playAt(index, queue)` — Load a track from the queue and start playback
+- `pause()`, `resume()`, `stop()`, `next()`, `previous()` — Playback control
+- `seek(positionMs)` — Seek to a specific position
+
+**Event wiring:** Subscribes to native event channels via stream providers:
+- `playerStateStreamProvider` → updates `isPlaying`, `positionMs`, `durationMs`
+- `commandStreamProvider` → handles lock screen commands and track completion
+
+#### `AudioMetadataNotifier`
+
+Manages the audio file library — the list of all tracks the user has imported.
+
+**State:**
+```dart
+tracks: List<AudioTrack>    // All imported audio files
+isLoading: bool             // Loading in progress?
+```
+
+**Key methods:**
+- `loadTracks()` — Syncs DB with disk, updates state
+- `uploadTrack(fileUri)` — Copies file to Documents, extracts metadata, saves to SQLite
+- `removeTrack(track)` — Deletes from filesystem and SQLite
+
+#### Stream Providers
+
+| Provider | Source | Purpose |
+|---|---|---|
+| `playerStateStreamProvider` | `audio_player/state` EventChannel | Position, duration, play/pause state at ~10 Hz |
+| `fftStreamProvider` | `audio_player/fft` EventChannel | FFT band data at audio tap rate (~60+ Hz) |
+| `commandStreamProvider` | `audio_player/commands` EventChannel | Lock screen commands and track completion |
+| `bandCountProvider` | Local state | Currently selected FFT band count (16/32/64/128) |
+
+#### Module-Level FFT Handling
+
+The `PillarVisualizer` widget subscribes to `fftStreamProvider` directly inside the widget, using a stream subscription that writes into a pre-allocated `Float32List`. Updates are driven by an `AnimationController` ticker rather than `setState` calls, so the widget repaints at a steady frame rate without re-triggering the build phase for high-frequency FFT events. This mirrors the broadcast stream pattern used in the React Native counterpart.
+
+---
+
+### Services (Singletons)
+
+All services are module-level singletons instantiated once via Riverpod providers and never destroyed.
+
+#### `AudioPlayerService`
+
+Wraps the native platform channels. It is the single point of contact between Dart and the native audio engine.
+
+```dart
+// Playback control (MethodChannel)
+Future<void> play(filePath, title, artist)
+void pause(), resume(), stop()
+void seek(positionMs)
+void setBandCount(count)
+
+// File & metadata (MethodChannel)
+Future<Map> getMetadata(filePath)
+Future<String> copyToDocuments(filePath)
+Future<List<String>> listAudioFiles()
+Future<void> deleteFile(filePath)
+Future<Float32List> decodePCM(filePath)
+
+// Native → Dart streams (EventChannels)
+Stream<Map> get playerStateStream      // {state, positionMs, durationMs}
+Stream<Map> get fftStream              // {bands: Float32List, nativeFftTimeUs}
+Stream<String> get commandStream       // "play"|"pause"|"next"|"previous"|"completed"
+```
+
+#### `SQLiteService`
+
+Manages persistence of audio file metadata using `sqflite`. Opens the database lazily on first access.
+
+**Database schema:**
+```sql
+CREATE TABLE tracks (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  title    TEXT    NOT NULL,
+  artist   TEXT    NOT NULL,
+  filePath TEXT    NOT NULL UNIQUE,
+  duration INTEGER NOT NULL            -- milliseconds
+);
+```
+
+**Methods:** `insertTrack`, `getAllTracks`, `deleteTrack`
+
+#### `WaveformFFI`
+
+Calls the C++ waveform library directly via `dart:ffi`, bypassing the method channel entirely for maximum throughput on large PCM buffers.
+
+```dart
+// Looks up generate_waveform_peaks() symbol in the process binary at startup
+static final _lib = DynamicLibrary.process();
+
+// Synchronous call — run on a background isolate
+static List<double> generatePeaks(Float32List samples, int barCount)
+```
+
+---
+
+### Screens & Navigation
+
+Navigation uses [GoRouter](https://pub.dev/packages/go_router) with two routes.
+
+```
+AudioListScreen  (route: "/")
+       │
+       └─────► AudioPlayerScreen  (route: "/player")
+```
+
+#### `AudioListScreen`
+
+The library view. Shows all imported tracks in a `ListView`. A floating action button (`+`) opens the system document picker to import new files. A `MiniPlayerBar` appears at the bottom whenever a track is loaded.
+
+#### `AudioPlayerScreen`
+
+Full-screen player. Layout from top to bottom:
+1. Track title and artist name
+2. Large circular audio visualizer (fills remaining space)
+3. Waveform seeker with elapsed/total time
+4. Playback controls (Previous / Play-Pause / Next)
+
+A small badge in the top-right corner cycles the FFT band count: 16b → 32b → 64b → 128b → 16b.
+
+---
+
+### Widgets
+
+#### `PlaybackControls`
+
+Three-button row: Previous | Play/Pause | Next. Reads state from `AudioTrackNotifier` via Riverpod and calls notifier methods on tap.
+
+#### `AudioListTile`
+
+`Dismissible` list tile with swipe-to-delete gesture. Shows a music note icon, track title, artist, and formatted duration. Swipe triggers a confirmation dialog before deletion.
+
+#### `MiniPlayerBar`
+
+Compact player shown on the list screen when a track is loaded. Contains a small visualizer (16 bands, 55% max height fraction), track info, and playback controls. Tapping anywhere navigates to the full player screen.
+
+---
+
+### Audio Visualizer
+
+`PillarVisualizer` (in `circular_visualizer.dart`) renders a circular FFT visualizer using Flutter's `CustomPainter` API.
+
+#### Geometry
+
+`2 × bandCount` bars are arranged in a circle:
+- Left half: bands 0 to N-1
+- Right half: mirrored bands N-1 to 0
+- Inner radius: ~28% of the widget's shorter dimension
+- Max bar length: ~22% of the shorter dimension (configurable via `maxHeightFraction`)
+- Color: HSL gradient from pink (hue 340°) to cyan (hue 180°) across bands
+
+A continuous `AnimationController` drives a 12-second rotation cycle.
+
+#### Smoothing
+
+Exponential interpolation (`LERP_FACTOR = 0.3`) is applied on every animation frame via the `AnimationController` tick callback. This runs within the widget's render pass and does not trigger `setState` for each FFT event.
+
+#### Performance
+
+- Pre-allocated `Float32List` for band data avoids per-frame heap allocation
+- `RepaintBoundary` isolates the visualizer from the rest of the widget tree
+- The `AnimationController` keeps the repaint cycle alive during playback and is paused when backgrounded
+
+---
+
+### Waveform Seeker
+
+`WaveformSeeker` is a `CustomPainter` widget that displays a static waveform of the current track and a progress indicator.
+
+**States:**
+- **Loading:** Rendered as placeholder sine-wave tick marks while waveform data is being computed
+- **Loaded:** Full waveform bars rendered as rounded rectangles (`RRect`)
+
+**Bar coloring:**
+- Bars to the left of the playhead (elapsed): semi-transparent cyan with a white tip on the tallest
+- Bars to the right (remaining): darker, subdued cyan
+
+**Progress animation:** When playing, the progress position animates with a 120ms linear transition for smooth movement. When seeking or paused, it updates instantly.
+
+The waveform data is computed in the background after each track load (see [Waveform C++ Module](#waveform-c-module)).
+
+---
+
+### AudioEnginePlugin (Swift)
+
+`AudioEnginePlugin.swift` is the main platform channel handler, registered in `AppDelegate.swift`. It orchestrates three sub-components and maps them to the Dart-facing API.
+
+```
+AudioEnginePlugin
+├── AudioEnginePlayer       — Actual audio playback and FFT
+├── AudioSessionManager     — AVAudioSession configuration
+└── NowPlayingService       — Lock screen / Control Center
+```
+
+#### Platform Channels
+
+**MethodChannel: `audio_player/control`** — Dart → Swift commands:
+
+| Method | Description |
+|---|---|
+| `play` | Load file and begin playback |
+| `pause` / `resume` / `stop` | Playback control |
+| `seek` | Seek to position in ms |
+| `setBandCount` | Update FFT band resolution |
+| `getMetadata` | Extract ID3 tags via AVAsset |
+| `copyToDocuments` | Copy picked file to app storage |
+| `listAudioFiles` | List all audio files in Documents |
+| `deleteFile` | Delete a file from disk |
+| `decodePCM` | Decode audio to float32 PCM for waveform |
+
+**EventChannels — Swift → Dart broadcasts:**
+
+| Channel | Payload | Rate |
+|---|---|---|
+| `audio_player/state` | `{state, positionMs, durationMs}` | ~10 Hz |
+| `audio_player/fft` | `{bands: Float32List, nativeFftTimeUs}` | ~60+ Hz |
+| `audio_player/commands` | `"play"│"pause"│"next"│"previous"│"completed"` | On event |
+
+#### `AudioEnginePlayer.swift`
+
+Core playback engine built on `AVAudioEngine` + `AVAudioPlayerNode`.
+
+**Playback:**
+- Files are loaded with `AVAudioFile` and scheduled via `playerNode.scheduleSegment()`
+- Seek operations stop the player, update `seekFrameOffset`, and reschedule from the new position
+- Position is tracked via `playerNode.playerTime(forNodeTime:)` + `seekFrameOffset`
+- A `DispatchSourceTimer` on a utility queue fires every 100ms to emit state updates
 
 **FFT Pipeline:**
 
 ```
-AVAudioEngine mixer tap (4096 PCM samples)
-        ↓  Hann windowing
-vDSP FFT (Accelerate framework, 4096-point)
-        ↓  magnitude calculation
-Logarithmic band grouping  (16–128 bands)
-        ↓  dB normalization (60 dB dynamic range)
-Power curve normalization  (visual exaggeration)
-        ↓
-EventChannel  →  PillarVisualizer in Flutter
+Audio Output (AVAudioEngine MainMixerNode tap)
+        │
+        ▼  4096 samples per buffer
+Stereo → Mono (vDSP_vadd)
+        │
+        ▼
+Backpressure check (os_unfair_lock)
+   → drop frame if previous FFT still running
+        │
+        ▼
+Snapshot to windowedBuffer
+        │
+        ├──► fftQueue.async {
+        │         Hann window (vDSP_hann_window)
+        │         Real-to-complex conversion (vDSP_ctoz)
+        │         FFT (vDSP_fft_zrip, radix-2)
+        │         Magnitude² (vDSP_zvmags)
+        │         dB conversion (vDSP_vdbcon)
+        │         Logarithmic band grouping
+        │         Normalization (60 dB floor, power curve)
+        │         → emit onFFTData callback → EventChannel → Dart
+        │    }
 ```
 
-FFT processing runs on a dedicated `DispatchQueue` with `.userInteractive` QoS to guarantee smooth real-time rendering without blocking the audio engine.
+**App lifecycle handling:**
+- `didEnterBackground` → full teardown (stop player, cancel timer, remove tap, stop engine); captures current frame offset so position is preserved on resume
+- `willEnterForeground` → does NOT auto-resume; notifies Dart of current paused state
+- `AVAudioEngineConfigurationChange` → reconnects nodes and resumes if was playing (handles Bluetooth connect/disconnect and other route changes)
 
-### AudioSessionManager.swift
+#### `AudioSessionManager.swift`
 
-Configures `AVAudioSession` for background audio playback and handles:
+Configures `AVAudioSession`:
+- Category: `.playback` (audio plays even when the device is silenced)
+- Handles interruptions (phone calls, Siri): pauses on interruption began, optionally resumes on interruption ended
+- Handles route changes: pauses when headphones are unplugged
 
-- **Interruptions** (phone calls, notifications) — auto-pause, conditionally auto-resume
-- **Route changes** (headphone disconnect) — auto-pause
+#### `NowPlayingService.swift`
 
-### NowPlayingService.swift
-
-Integrates with the iOS **MediaPlayer** framework to:
-
-- Display track title, artist, duration, and elapsed position on the lock screen and Control Center
-- Register handlers for remote commands: play, pause, next, previous, seek
-
----
-
-## Screens & Widgets
-
-### Audio List Screen (`/`)
-
-The library browser. Displays all imported tracks with title, artist, and duration. Supports:
-
-- Swipe-to-delete with confirmation
-- Tap to start playback
-- FAB (+) to import audio files via the system file picker
-- Mini player bar at the bottom when a track is playing
-
-### Audio Player Screen (`/player`)
-
-Full-screen player with:
-
-- Track title & artist
-- `PillarVisualizer` — large FFT visualizer, configurable band count
-- Playback controls (previous / play-pause / next)
-- Band count toggle cycling through 16 → 32 → 64 → 128 → 16
-
-### PillarVisualizer
-
-A `CustomPainter`-based widget that renders animated frequency pillars:
-
-- Subscribes to the native `fft` event stream
-- Smoothly interpolates (`lerp`) between current and target band values each frame
-- Renders pillars with rounded tops and a hue gradient (cyan at low frequencies → pink at high)
-- Wrapped in `RepaintBoundary` to isolate repaints
-
-### MiniPlayerBar
-
-80px compact player shown on the list screen while audio is playing. Includes a 16-band mini visualizer, track info, and play/pause + next controls. Tapping navigates to the full player screen.
+Integrates with `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter`:
+- Registers handlers for Play, Pause, Next, Previous, and ChangePlaybackPosition
+- `updateNowPlaying(title, artist, duration, position, isPlaying)` — pushes metadata to lock screen
+- `clearNowPlaying()` — resets lock screen on stop
+- Routes all remote commands back to Dart via the `audio_player/commands` EventChannel
 
 ---
 
-## Data Persistence
+### Waveform C++ Module
 
-| Storage                            | Usage                                                                                                       |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **SQLite** (`sqflite`)             | Track metadata (title, artist, file path, duration). `UNIQUE` constraint on `filePath` prevents duplicates. |
-| **App Documents** (`audio_files/`) | Imported audio files copied into the app's sandboxed Documents directory via iOS `FileManager`.             |
+Located at `ios/Runner/waveform_peaks.cpp`, this is a small, focused C++ library for computing normalized audio waveform peaks from PCM data.
 
-When the app starts, `AudioMetadataNotifier` scans the Documents directory and reconciles the disk state with the database — removing stale entries and importing any untracked files.
+**Function:**
+```cpp
+// waveform_peaks.h
+extern "C" void generate_waveform_peaks(
+    const float* samples,
+    uint64_t     frame_count,
+    double       sample_rate,
+    uint32_t     bar_count,
+    float*       out_peaks      // caller-allocated, length = bar_count
+);
+```
+
+**Algorithm:**
+1. Divide the audio into `bar_count` uniform time chunks
+2. Compute RMS (Root Mean Square) energy per chunk: `sqrt(mean(sample²))`
+3. Find the global maximum RMS across all chunks
+4. Normalize each chunk: `peak[i] = rms[i] / global_max_rms`
+5. Output: array of values in [0, 1]
+
+This produces a perceptually accurate representation of loudness across time, with the loudest moment always reaching 1.0 and quieter sections scaled proportionally.
+
+**Integration:** The C++ source is compiled directly into the iOS app binary. `WaveformCppBridge.mm` (an Objective-C++ unity build) includes `waveform_peaks.cpp` so the `generate_waveform_peaks` symbol is available at the process level. `WaveformFFI` on the Dart side looks it up via `DynamicLibrary.process()` and calls it directly — no method channel round-trip.
+
+**PCM decode:** Before calling C++, the Dart side calls `AudioPlayerService.decodePCM(filePath)` via the method channel. Swift decodes the entire audio file to a `Float32List` using `AVAudioFile` + `AVAudioPCMBuffer`, mixes channels to mono, and returns the raw samples to Dart. The C++ call then happens entirely on a Dart background isolate.
 
 ---
 
-## Dependencies
+### SQLite Storage
 
-| Package            | Version | Purpose                             |
-| ------------------ | ------- | ----------------------------------- |
-| `flutter_riverpod` | ^2.6.1  | State management                    |
-| `go_router`        | ^14.8.1 | Declarative navigation              |
-| `sqflite`          | ^2.4.2  | SQLite local database               |
-| `file_picker`      | ^8.3.7  | System file picker for audio import |
-| `path`             | ^1.9.1  | Cross-platform path utilities       |
-| `cupertino_icons`  | ^1.0.8  | iOS-style icons                     |
+Audio file metadata is persisted locally using `sqflite`. The database (`audio_player.db`) is created automatically in the app's Documents directory on first launch.
+
+**Schema:**
+```sql
+CREATE TABLE IF NOT EXISTS tracks (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  title    TEXT    NOT NULL,
+  artist   TEXT    NOT NULL,
+  filePath TEXT    NOT NULL UNIQUE,
+  duration INTEGER NOT NULL            -- milliseconds
+);
+```
+
+**Access pattern:** `SQLiteService` opens the database connection lazily and caches it. All access goes through the singleton to avoid multiple open connections.
+
+**Sync strategy:** On each app launch, `AudioMetadataNotifier._scanLocalFiles()` reconciles the database with actual files on disk:
+1. Remove DB entries whose files no longer exist
+2. Import any new files found in `Documents/audio_files/` not yet in the DB (metadata extracted via native `getMetadata`)
+3. Update the Riverpod state so the list re-renders
+
+Audio files are stored at: `Documents/audio_files/<filename>` (inside the app's sandboxed Documents directory, which persists across restarts).
+
+---
+
+### FFT Data Flow
+
+```
+Native Audio Thread (AVAudioEngine tap callback)
+        │
+        │  Buffer: 4096 float32 samples per callback
+        ▼
+AudioEnginePlayer.swift
+  - Mix stereo → mono (vDSP)
+  - Backpressure: drop if FFT queue busy (os_unfair_lock)
+  - Copy mono samples → windowedBuffer
+        │
+        ▼  (fftQueue: QoS userInteractive)
+  - Apply Hann window
+  - vDSP_fft_zrip (radix-2 FFT, 4096 points)
+  - vDSP_zvmags (magnitude squared)
+  - vDSP_vdbcon (convert to dB)
+  - Logarithmic band grouping (bins → N bands)
+  - Normalize: 60 dB dynamic range + power curve
+        │
+        ▼  onFFTData callback → EventChannel → Dart
+AudioPlayerService.fftStream (Dart)
+        │
+        ▼  PillarVisualizerState stream subscription
+  - Write bands into pre-allocated Float32List
+        │
+        ▼  AnimationController tick (frame-driven, not stream-driven)
+CustomPainter
+  - Lerp smoothing (LERP_FACTOR = 0.3) applied each frame
+  - Draw 2×bandCount radial bars with HSL color gradient
+```
+
+The key design insight is that FFT values flow from native → Dart stream → `Float32List` → painter without triggering a widget rebuild. The widget tree stays static; only the pre-allocated buffer is mutated and the `AnimationController` drives continuous repaints.
+
+---
+
+### End-to-End Playback Flow
+
+```
+1. User taps "+" in AudioListScreen
+   └── file_picker → system document picker
+
+2. AudioMetadataNotifier.uploadTrack(uri)
+   └── AudioPlayerService.copyToDocuments(uri) [method channel]
+       └── Swift copies file to Documents/audio_files/
+
+3. AudioPlayerService.getMetadata(filePath) [method channel]
+   └── AVAsset reads ID3 tags → { title, artist, durationMs }
+
+4. SQLiteService.insertTrack(track)
+   └── Persists to audio_player.db
+
+5. AudioMetadataNotifier: track added to state → list re-renders
+
+6. User taps track in list
+   └── AudioTrackNotifier.playAt(index, queue)
+
+7. AudioPlayerService.play(filePath, title, artist) [method channel]
+   └── AudioEnginePlayer.load(filePath)
+       ├── AVAudioFile opened
+       ├── PlayerNode connected to MainMixerNode
+       ├── FFT tap installed on MainMixerNode
+       └── AVAudioEngine.start()
+   └── playerNode.play() + scheduleSegment()
+       └── Audio begins playing
+
+8. Every 100ms: position timer fires
+   └── onStateChanged → EventChannel → playerStateStream
+       └── AudioTrackNotifier updates positionMs, isPlaying → UI refreshes
+
+9. Every audio buffer: FFT tap fires
+   └── onFFTData → EventChannel → fftStream
+       └── PillarVisualizer writes to Float32List → CustomPainter redraws
+
+10. AudioTrackNotifier._loadWaveform(filePath) [background, async]
+    └── AudioPlayerService.decodePCM(filePath) [method channel]
+        └── Swift: AVAudioFile → AVAudioPCMBuffer → mono Float32List
+    └── WaveformFFI.generatePeaks(samples, barCount) [dart:ffi, isolate]
+        └── C++ RMS per chunk → normalized peaks [0, 1]
+    └── WaveformSeeker receives peaks → renders full waveform
+
+11. Track ends: playerNode completion callback
+    └── "completed" command → commandStream
+        └── AudioTrackNotifier.next()
+            └── Loops back to step 7 with next track in queue
+```

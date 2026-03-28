@@ -33,7 +33,8 @@ class AudioEnginePlayer {
 
     // MARK: - Position Timer
 
-    private var positionTimer: Timer?
+    private var positionTimer: DispatchSourceTimer?
+    private let positionTimerQueue = DispatchQueue(label: "com.audioplayer.position", qos: .utility)
 
     // MARK: - FFT Configuration
 
@@ -85,7 +86,7 @@ class AudioEnginePlayer {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        positionTimer?.invalidate()
+        positionTimer?.cancel()
         removeTap()
         engine.stop()
         if let setup = fftSetup {
@@ -229,7 +230,21 @@ class AudioEnginePlayer {
             engine.stop()
         }
 
-        let url = URL(fileURLWithPath: filePath)
+        // Handle both file:// URIs and plain paths
+        let url: URL
+        if filePath.hasPrefix("file://") {
+            // URI format - use URL(string:)
+            guard let parsedURL = URL(string: filePath) else {
+                throw NSError(
+                    domain: "AudioEnginePlayer", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Invalid file URI"])
+            }
+            url = parsedURL
+        } else {
+            // Plain path - use URL(fileURLWithPath:)
+            url = URL(fileURLWithPath: filePath)
+        }
+
         audioFile = try AVAudioFile(forReading: url)
 
         guard let file = audioFile else { return }
@@ -358,15 +373,18 @@ class AudioEnginePlayer {
     }
 
     private func startPositionTimer() {
-        positionTimer?.invalidate()
-        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) {
-            [weak self] _ in
+        positionTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: positionTimerQueue)
+        timer.schedule(deadline: .now() + 0.1, repeating: 0.1, leeway: .milliseconds(10))
+        timer.setEventHandler { [weak self] in
             self?.notifyState()
         }
+        timer.resume()
+        positionTimer = timer
     }
 
     private func stopPositionTimer() {
-        positionTimer?.invalidate()
+        positionTimer?.cancel()
         positionTimer = nil
     }
 
