@@ -22,7 +22,8 @@ class _AudioListScreenState extends ConsumerState<AudioListScreen> {
 
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.audio,
+        type: FileType.custom,
+        allowedExtensions: ['mp3', 'wav', 'aac', 'm4a', 'flac', 'ogg', 'opus', 'aiff'],
         allowMultiple: true,
       );
 
@@ -49,8 +50,9 @@ class _AudioListScreenState extends ConsumerState<AudioListScreen> {
   Widget build(BuildContext context) {
     final metadataState = ref.watch(audioMetadataNotifierProvider);
 
-    final hasActiveTrack =
-        ref.watch(audioTrackNotifierProvider).currentTrack != null;
+    final hasActiveTrack = ref.watch(
+      audioTrackNotifierProvider.select((s) => s.currentTrack != null),
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),

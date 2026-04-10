@@ -124,12 +124,18 @@ class _CircularPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (bands.isEmpty) return;
 
+    // Always draw a fixed number of pillars per side so the full circle
+    // is filled regardless of how many FFT bands the engine provides.
+    // bands.length = bandCount (e.g. 16, 32, 64, 128)
+    // pillarsPerSide = bands.length → total pillars = bands.length * 2
+    final pillarsPerSide = bands.length;
+
     final center = Offset(size.width / 2, size.height / 2);
     final side = min(size.width, size.height);
     final innerRadius = side * 0.28;
     final maxBarLength = side * 0.22 * maxHeightFraction;
-    final barWidth = (2 * pi * innerRadius) / (bands.length * 2) * 0.55;
-    final angleStep = pi / (bands.length - 1); // half circle per side
+    final barWidth = (2 * pi * innerRadius) / (pillarsPerSide * 2) * 0.55;
+    final angleStep = pi / (pillarsPerSide - 1);
     final rotationAngle = rotation.value * 2 * pi;
 
     final paint = Paint()
@@ -140,18 +146,14 @@ class _CircularPainter extends CustomPainter {
     canvas.translate(center.dx, center.dy);
     canvas.rotate(rotationAngle);
 
-    // Draw each band twice: mirrored left↔right around the vertical axis.
-    // Band 0 sits at the top, band N-1 sits at the bottom.
-    // Right side: angle = +step*i from top (clockwise).
-    // Left side:  angle = -step*i from top (counter-clockwise) = mirror.
-    // Hue ping-pongs cyan→pink→cyan from top→bottom so both sides share the same color.
-    for (var i = 0; i < bands.length; i++) {
-      final amplitude = bands[i].clamp(0.0, 1.0);
+    for (var i = 0; i < pillarsPerSide; i++) {
+      // Map pillar index to FFT band index (interpolate if needed)
+      final bandIndex = (i / (pillarsPerSide - 1) * (bands.length - 1)).round().clamp(0, bands.length - 1);
+      final amplitude = bands[bandIndex].clamp(0.0, 1.0);
       final barHeight = amplitude * maxBarLength + side * 0.01;
 
-      // t goes 0→1 from top to bottom along either side
-      final t = i / (bands.length - 1);
-      final hue = 340 - t * 160; // pink (340) at top → cyan (180) at bottom
+      final t = i / (pillarsPerSide - 1);
+      final hue = 340 - t * 160;
       paint.color = HSLColor.fromAHSL(1.0, hue, 0.8, 0.6).toColor();
       paint.strokeWidth = barWidth;
 

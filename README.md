@@ -104,7 +104,7 @@ flutter run --release
 
 ## Use Cases
 
-1. **Import audio files** — Pick one or more audio files (MP3, M4A, WAV, AAC, FLAC, AIFF) from the device using the system document picker. Files are copied to the app's Documents directory for persistence.
+1. **Import audio files** — Pick one or more audio files (MP3, M4A, WAV, AAC, FLAC, OGG, Opus, AIFF) from the device Files app using the system document picker. Files are copied to the app's Documents directory for persistence.
 
 2. **Browse audio library** — View all imported audio files in a scrollable list showing title, artist, and duration. Swipe left on any track to delete it.
 
@@ -116,7 +116,7 @@ flutter run --release
 
 6. **Waveform navigation** — View a waveform representation of the current track with a progress indicator showing elapsed and remaining time.
 
-7. **Adjust FFT resolution** — Cycle through band count presets (16 / 32 / 64 / 128 bands) from the player screen to change visualizer detail.
+7. **Adjust FFT resolution** — Cycle through band count presets (32 / 64 / 128 / 256 total pillars) from the player screen to change visualizer detail.
 
 8. **Mini player** — While browsing the library with a track loaded, a compact player bar at the bottom shows the visualizer, track info, and playback controls.
 
@@ -143,7 +143,7 @@ flutter run --release
 │  │Waveform  │  │         Services (Singletons)    │ │
 │  │Controls  │  │  AudioPlayerService              │ │
 │  └──────────┘  │  SQLiteService                   │ │
-│                │  WaveformFFI                     │ │
+│                │  compute (Dart isolate)          │ │
 │                └───────────────┬──────────────────┘ │
 └────────────────────────────────┼────────────────────┘
                                  │ Platform Channels
@@ -161,7 +161,8 @@ flutter run --release
 │                          │                          │
 │                          ▼                          │
 │           waveform_peaks.cpp (C++ Library)          │
-│              ↑ called directly via dart:ffi         │
+│              (compiled into binary; FFI symbol      │
+│               available but peak gen now in Dart)   │
 └─────────────────────────────────────────────────────┘
                            │
                            ▼
@@ -189,7 +190,7 @@ flutter_audio_player/
 │   ├── services/
 │   │   ├── audio_player_service.dart     # Wraps platform channels; owns broadcast StreamControllers
 │   │   ├── sqlite_service.dart           # SQLite track metadata persistence with dispose support
-│   │   └── waveform_ffi.dart             # C++ FFI bindings for waveform generation
+│   │   └── waveform_ffi.dart             # C++ FFI bindings (symbol lookup; peak gen moved to Dart isolate)
 │   ├── screens/
 │   │   ├── audio_list_screen.dart        # Library view with file import and mini player
 │   │   └── audio_player_screen.dart      # Full-screen player with visualizer and waveform
@@ -264,11 +265,14 @@ isLoading: bool             // Loading in progress?
 
 #### `BandCountNotifier`
 
-A simple `Notifier<int>` that holds the currently selected FFT band count. Replaces a deprecated `StateProvider`.
+A simple `Notifier<int>` that holds the total number of visualizer pillars. Replaces a deprecated `StateProvider`.
+
+The value represents the **total** pillar count displayed on the circle. The visualizer and native FFT engine each receive `bandCount ~/ 2` (one half of the circle per side). Valid values: 32, 64, 128, 256. Default: 64.
 
 ```dart
 final bandCountProvider = NotifierProvider<BandCountNotifier, int>(BandCountNotifier.new);
 // Usage: ref.read(bandCountProvider.notifier).set(64);
+// Visualizer receives: 64 ~/ 2 = 32 bands per side
 ```
 
 #### Stream Providers
@@ -332,14 +336,11 @@ CREATE TABLE tracks (
 
 #### `WaveformFFI`
 
-Calls the C++ waveform library directly via `dart:ffi`, bypassing the method channel entirely for maximum throughput on large PCM buffers.
+Holds the `dart:ffi` bindings for the C++ `generate_waveform_peaks` symbol compiled into the app binary. The symbol is still available for direct FFI calls, but waveform peak generation has been moved to a pure Dart implementation running on a background isolate (see [Waveform C++ Module](#waveform-c-module)) to avoid blocking the main thread in AOT (profile/release) builds.
 
 ```dart
 // Looks up generate_waveform_peaks() symbol in the process binary at startup
 static final _lib = DynamicLibrary.process();
-
-// Synchronous call — run on a background isolate
-static List<double> generatePeaks(Float32List samples, int barCount)
 ```
 
 ---
@@ -362,11 +363,11 @@ The library view. Shows all imported tracks in a `ListView`. A floating action b
 
 Full-screen player. Layout from top to bottom:
 1. Track title and artist name
-2. Large circular audio visualizer (fills remaining space)
+2. Circular audio visualizer — fills all remaining space via `Expanded`, ensuring controls are always visible regardless of screen size
 3. Waveform seeker with elapsed/total time
 4. Playback controls (Previous / Play-Pause / Next)
 
-A small badge in the top-right corner cycles the FFT band count: 16b → 32b → 64b → 128b → 16b.
+A small badge in the top-right corner cycles the total pillar count: 32b → 64b → 128b → 256b → 32b. The visualizer and engine each receive half (`bandCount ~/ 2`) per side.
 
 ---
 
@@ -392,9 +393,9 @@ Compact player shown on the list screen when a track is loaded. Contains a small
 
 #### Geometry
 
-`2 × bandCount` bars are arranged in a circle:
-- Left half: bands 0 to N-1
-- Right half: mirrored bands N-1 to 0
+`bandCount` bars are arranged in a full circle, split into two mirrored halves. The widget receives `totalBandCount ~/ 2` from the provider (e.g. 32 bands per side for a total of 64 pillars):
+- Right half: bands 0 to N-1 (clockwise from top)
+- Left half: bands N-1 to 0 (counter-clockwise, mirrored)
 - Inner radius: ~28% of the widget's shorter dimension
 - Max bar length: ~22% of the shorter dimension (configurable via `maxHeightFraction`)
 - Color: HSL gradient from pink (hue 340°) to cyan (hue 180°) across bands
@@ -427,7 +428,7 @@ Exponential interpolation (`LERP_FACTOR = 0.3`) is applied on every animation fr
 
 **Progress animation:** When playing, the progress position animates with a 120ms linear transition for smooth movement. When seeking or paused, it updates instantly.
 
-The waveform data is computed in the background after each track load (see [Waveform C++ Module](#waveform-c-module)).
+The waveform data is computed asynchronously after each track load via a background Dart isolate (`compute`), so it never blocks playback or the UI thread (see [Waveform C++ Module](#waveform-c-module)).
 
 ---
 
@@ -550,9 +551,11 @@ extern "C" void generate_waveform_peaks(
 
 This produces a perceptually accurate representation of loudness across time, with the loudest moment always reaching 1.0 and quieter sections scaled proportionally.
 
-**Integration:** The C++ source is compiled directly into the iOS app binary. `WaveformCppBridge.mm` (an Objective-C++ unity build) includes `waveform_peaks.cpp` so the `generate_waveform_peaks` symbol is available at the process level. `WaveformFFI` on the Dart side looks it up via `DynamicLibrary.process()` and calls it directly — no method channel round-trip.
+**Integration:** The C++ source is compiled directly into the iOS app binary. `WaveformCppBridge.mm` (an Objective-C++ unity build) includes `waveform_peaks.cpp` so the `generate_waveform_peaks` symbol is available at the process level via `DynamicLibrary.process()`.
 
-**PCM decode:** Before calling C++, the Dart side calls `AudioPlayerService.decodePCM(filePath)` via the method channel. Swift decodes the entire audio file to a `Float32List` using `AVAudioFile` + `AVAudioPCMBuffer`, mixes channels to mono, and returns the raw samples to Dart. The C++ call then happens entirely on a Dart background isolate.
+**Peak generation on Dart side:** Peak computation has been moved from a direct FFI call to a pure Dart RMS implementation running via `flutter/foundation.dart compute()` on a background isolate. This prevents the synchronous C++ call from blocking the main thread in AOT (profile/release) builds, where it was causing audio interruptions. The C++ symbol remains available in `WaveformFFI` but is no longer called during normal operation.
+
+**PCM decode:** Before peak generation, the Dart side calls `AudioPlayerService.decodePCM(filePath)` via the method channel. Swift decodes the audio file to a mono `Float32List` using `AVAudioConverter` in chunks (`AVAudioFrameCount = 65536` per chunk), which correctly handles compressed formats (AAC, MP3, M4A) where `AVAudioFile.length` reports compressed packet count rather than actual PCM frame count. The resulting samples are returned to Dart and processed entirely on the background isolate.
 
 ---
 
@@ -658,9 +661,9 @@ The key design insight is that FFT values flow from native → Dart stream → `
 
 10. AudioPlayerScreen._loadWaveform(filePath) [background, async]
     └── AudioPlayerService.decodePCM(filePath) [method channel]
-        └── Swift: AVAudioFile → AVAudioPCMBuffer → mono Float32List
-    └── WaveformFFI.generatePeaks(samples, barCount) [dart:ffi, isolate]
-        └── C++ RMS per chunk → normalized peaks [0, 1]
+        └── Swift: AVAudioConverter (chunked, 65536 frames) → mono Float32List
+    └── compute(_generatePeaksDart, pcm) [Dart background isolate]
+        └── Pure Dart RMS per chunk → normalized peaks [0, 1]
     └── WaveformSeeker receives peaks → renders full waveform
 
 11. Track ends: playerNode completion callback

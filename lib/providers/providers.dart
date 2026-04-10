@@ -6,10 +6,12 @@ import 'audio_metadata_notifier.dart';
 
 export 'service_providers.dart';
 
-// Band count: 16, 32, 64, or 128
+// Band count: number of FFT bands sent by the engine.
+// The visualizer draws each band mirrored (left + right), so total visible pillars = bandCount * 2.
+// Valid values: 16, 32, 64, 128.
 class BandCountNotifier extends Notifier<int> {
   @override
-  int build() => 32;
+  int build() => 128;
 
   void set(int count) => state = count;
 }

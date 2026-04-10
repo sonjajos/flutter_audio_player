@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'router/app_router.dart';
+import 'widgets/circular_visualizer.dart';
+import 'widgets/waveform_seeker.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +27,30 @@ class AudioPlayerApp extends StatelessWidget {
         ),
       ),
       routerConfig: appRouter,
+      builder: (context, child) => Stack(
+        children: [
+          if (child case final child?) child,
+          const Offstage(
+            child: SizedBox(
+              width: 200,
+              height: 200,
+              child: PillarVisualizer(bandCount: 32),
+            ),
+          ),
+          const Offstage(
+            child: SizedBox(
+              width: 300,
+              height: 80,
+              child: WaveformSeeker(
+                peaks: null,
+                progress: 0,
+                currentPositionMs: 0,
+                durationMs: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
