@@ -63,12 +63,12 @@ This audio player allows users to import audio files from their device, browse a
 
 ### Required Tools
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Flutter | 3.x+ | UI framework and toolchain |
-| Dart | 3.x+ | Programming language |
-| CocoaPods | Latest | iOS dependency manager |
-| Xcode | 15+ | iOS build toolchain |
+| Tool      | Version | Purpose                    |
+| --------- | ------- | -------------------------- |
+| Flutter   | 3.x+    | UI framework and toolchain |
+| Dart      | 3.x+    | Programming language       |
+| CocoaPods | Latest  | iOS dependency manager     |
+| Xcode     | 15+     | iOS build toolchain        |
 
 ### Installation
 
@@ -228,6 +228,7 @@ Service providers live in `service_providers.dart` to avoid circular imports bet
 The central notifier for all playback state. It bridges the native audio engine to the Flutter widget tree.
 
 **State:**
+
 ```dart
 currentTrack: AudioTrack?    // Currently loaded track
 isPlaying: bool              // Playback active?
@@ -238,11 +239,13 @@ currentIndex: int            // Index in queue
 ```
 
 **Key methods:**
+
 - `playAt(index, queue)` — Load a track from the queue and start playback
 - `pause()`, `resume()`, `stop()`, `next()`, `previous()` — Playback control
 - `updatePosition(position)` — Manual position update
 
 **Event wiring:** The notifier subscribes to native event streams directly inside `build()` and cleans up via `ref.onDispose`. No stream wiring in widgets.
+
 - `stateStream` → updates `isPlaying`, `position`, `duration`
 - `commandStream` → handles lock screen commands and track completion
 
@@ -251,12 +254,14 @@ currentIndex: int            // Index in queue
 Manages the audio file library — the list of all tracks the user has imported.
 
 **State:**
+
 ```dart
 tracks: List<AudioTrack>    // All imported audio files
 isLoading: bool             // Loading in progress?
 ```
 
 **Key methods:**
+
 - `loadTracks()` — Syncs DB with disk, updates state
 - `uploadTrack(fileUri)` — Copies file to Documents, extracts metadata, saves to SQLite
 - `removeTrack(track)` — Deletes from filesystem and SQLite
@@ -277,11 +282,11 @@ final bandCountProvider = NotifierProvider<BandCountNotifier, int>(BandCountNoti
 
 #### Stream Providers
 
-| Provider | Source | Purpose |
-|---|---|---|
-| `playerStateStreamProvider` | `audio_player/state` EventChannel | Position, duration, play/pause state at ~10 Hz |
-| `fftStreamProvider` | `audio_player/fft` EventChannel | FFT band data at audio tap rate (~60+ Hz) |
-| `commandStreamProvider` | `audio_player/commands` EventChannel | Lock screen commands and track completion |
+| Provider                    | Source                               | Purpose                                        |
+| --------------------------- | ------------------------------------ | ---------------------------------------------- |
+| `playerStateStreamProvider` | `audio_player/state` EventChannel    | Position, duration, play/pause state at ~10 Hz |
+| `fftStreamProvider`         | `audio_player/fft` EventChannel      | FFT band data at audio tap rate (~60+ Hz)      |
+| `commandStreamProvider`     | `audio_player/commands` EventChannel | Lock screen commands and track completion      |
 
 #### Module-Level FFT Handling
 
@@ -322,6 +327,7 @@ Stream<String> get commandStream       // "play"|"pause"|"next"|"previous"|"comp
 Manages persistence of audio file metadata using `sqflite`. Opens the database lazily on first access.
 
 **Database schema:**
+
 ```sql
 CREATE TABLE tracks (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -362,6 +368,7 @@ The library view. Shows all imported tracks in a `ListView`. A floating action b
 #### `AudioPlayerScreen`
 
 Full-screen player. Layout from top to bottom:
+
 1. Track title and artist name
 2. Circular audio visualizer — fills all remaining space via `Expanded`, ensuring controls are always visible regardless of screen size
 3. Waveform seeker with elapsed/total time
@@ -394,6 +401,7 @@ Compact player shown on the list screen when a track is loaded. Contains a small
 #### Geometry
 
 `bandCount` bars are arranged in a full circle, split into two mirrored halves. The widget receives `totalBandCount ~/ 2` from the provider (e.g. 32 bands per side for a total of 64 pillars):
+
 - Right half: bands 0 to N-1 (clockwise from top)
 - Left half: bands N-1 to 0 (counter-clockwise, mirrored)
 - Inner radius: ~28% of the widget's shorter dimension
@@ -419,10 +427,12 @@ Exponential interpolation (`LERP_FACTOR = 0.3`) is applied on every animation fr
 `WaveformSeeker` is a `CustomPainter` widget that displays a static waveform of the current track and a progress indicator.
 
 **States:**
+
 - **Loading:** Rendered as placeholder sine-wave tick marks while waveform data is being computed
 - **Loaded:** Full waveform bars rendered as rounded rectangles (`RRect`)
 
 **Bar coloring:**
+
 - Bars to the left of the playhead (elapsed): semi-transparent cyan with a white tip on the tallest
 - Bars to the right (remaining): darker, subdued cyan
 
@@ -447,24 +457,24 @@ AudioEnginePlugin
 
 **MethodChannel: `audio_player/control`** — Dart → Swift commands:
 
-| Method | Description |
-|---|---|
-| `play` | Load file and begin playback |
-| `pause` / `resume` / `stop` | Playback control |
-| `seek` | Seek to position in ms |
-| `setBandCount` | Update FFT band resolution |
-| `getMetadata` | Extract ID3 tags via AVAsset |
-| `copyToDocuments` | Copy picked file to app storage |
-| `listAudioFiles` | List all audio files in Documents |
-| `deleteFile` | Delete a file from disk |
-| `decodePCM` | Decode audio to float32 PCM for waveform |
+| Method                      | Description                              |
+| --------------------------- | ---------------------------------------- |
+| `play`                      | Load file and begin playback             |
+| `pause` / `resume` / `stop` | Playback control                         |
+| `seek`                      | Seek to position in ms                   |
+| `setBandCount`              | Update FFT band resolution               |
+| `getMetadata`               | Extract ID3 tags via AVAsset             |
+| `copyToDocuments`           | Copy picked file to app storage          |
+| `listAudioFiles`            | List all audio files in Documents        |
+| `deleteFile`                | Delete a file from disk                  |
+| `decodePCM`                 | Decode audio to float32 PCM for waveform |
 
 **EventChannels — Swift → Dart broadcasts:**
 
-| Channel | Payload | Rate |
-|---|---|---|
-| `audio_player/state` | `{state, positionMs, durationMs}` | ~10 Hz |
-| `audio_player/fft` | `{bands: Float32List, nativeFftTimeUs}` | ~60+ Hz |
+| Channel                 | Payload                                        | Rate     |
+| ----------------------- | ---------------------------------------------- | -------- |
+| `audio_player/state`    | `{state, positionMs, durationMs}`              | ~10 Hz   |
+| `audio_player/fft`      | `{bands: Float32List, nativeFftTimeUs}`        | ~60+ Hz  |
 | `audio_player/commands` | `"play"│"pause"│"next"│"previous"│"completed"` | On event |
 
 #### `AudioEnginePlayer.swift`
@@ -472,6 +482,7 @@ AudioEnginePlugin
 Core playback engine built on `AVAudioEngine` + `AVAudioPlayerNode`.
 
 **Playback:**
+
 - Files are loaded with `AVAudioFile` and scheduled via `playerNode.scheduleSegment()`
 - Seek operations stop the player, update `seekFrameOffset`, and reschedule from the new position
 - Position is tracked via `playerNode.playerTime(forNodeTime:)` + `seekFrameOffset`
@@ -505,6 +516,7 @@ Snapshot to windowedBuffer
 ```
 
 **App lifecycle handling:**
+
 - `didEnterBackground` → full teardown (stop player, cancel timer, remove tap, stop engine); captures current frame offset so position is preserved on resume
 - `willEnterForeground` → does NOT auto-resume; notifies Dart of current paused state
 - `AVAudioEngineConfigurationChange` → reconnects nodes and resumes if was playing (handles Bluetooth connect/disconnect and other route changes)
@@ -512,6 +524,7 @@ Snapshot to windowedBuffer
 #### `AudioSessionManager.swift`
 
 Configures `AVAudioSession`:
+
 - Category: `.playback` (audio plays even when the device is silenced)
 - Handles interruptions (phone calls, Siri): pauses on interruption began, optionally resumes on interruption ended
 - Handles route changes: pauses when headphones are unplugged
@@ -519,6 +532,7 @@ Configures `AVAudioSession`:
 #### `NowPlayingService.swift`
 
 Integrates with `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter`:
+
 - Registers handlers for Play, Pause, Next, Previous, and ChangePlaybackPosition
 - `updateNowPlaying(title, artist, duration, position, isPlaying)` — pushes metadata to lock screen
 - `clearNowPlaying()` — resets lock screen on stop
@@ -531,6 +545,7 @@ Integrates with `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter`:
 Located at `ios/Runner/waveform_peaks.cpp`, this is a small, focused C++ library for computing normalized audio waveform peaks from PCM data.
 
 **Function:**
+
 ```cpp
 // waveform_peaks.h
 extern "C" void generate_waveform_peaks(
@@ -543,6 +558,7 @@ extern "C" void generate_waveform_peaks(
 ```
 
 **Algorithm:**
+
 1. Divide the audio into `bar_count` uniform time chunks
 2. Compute RMS (Root Mean Square) energy per chunk: `sqrt(mean(sample²))`
 3. Find the global maximum RMS across all chunks
@@ -564,6 +580,7 @@ This produces a perceptually accurate representation of loudness across time, wi
 Audio file metadata is persisted locally using `sqflite`. The database (`audio_player.db`) is created automatically in the app's Documents directory on first launch.
 
 **Schema:**
+
 ```sql
 CREATE TABLE IF NOT EXISTS tracks (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -577,6 +594,7 @@ CREATE TABLE IF NOT EXISTS tracks (
 **Access pattern:** `SQLiteService` opens the database connection lazily and caches it. All access goes through the singleton to avoid multiple open connections. The `dispose()` method closes the connection when the provider is torn down.
 
 **Sync strategy:** On first access, `AudioMetadataNotifier` calls `_scanLocalFiles()` automatically to reconcile the database with actual files on disk:
+
 1. Remove DB entries whose files no longer exist
 2. Import any new files found in `Documents/audio_files/` not yet in the DB (metadata extracted via native `getMetadata`)
 3. Update the Riverpod state so the list re-renders

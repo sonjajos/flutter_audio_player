@@ -77,8 +77,10 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> {
       _waveformPeaks = null;
       _waveformTrackPath = filePath;
     });
+    final title = filePath.split('/').last;
     final service = ref.read(audioPlayerServiceProvider);
     try {
+      final sw = Stopwatch()..start();
       final pcm = await service.decodePCM(filePath);
       debugPrint('[WaveformDebug] decodePCM returned ${pcm.length} samples');
       if (!mounted) return;
@@ -87,13 +89,14 @@ class _AudioPlayerScreenState extends ConsumerState<AudioPlayerScreen> {
         return;
       }
       final peaks = await compute(_generatePeaksDart, pcm);
+      sw.stop();
       debugPrint(
-        '[WaveformDebug] FFI generatePeaks returned ${peaks.length} peaks',
+        '[Waveform] "$title" — waveform generation: ${(sw.elapsedMicroseconds / 1000).toStringAsFixed(1)}ms',
       );
       if (!mounted) return;
       setState(() => _waveformPeaks = peaks);
     } catch (e, st) {
-      debugPrint('[WaveformDebug] ERROR: $e\n$st');
+      debugPrint('[Waveform] "$title" — ERROR: $e\n$st');
     }
   }
 
